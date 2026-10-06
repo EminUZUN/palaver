@@ -14,7 +14,7 @@ Thanks for helping. palaver aims to stay small, so please keep that in mind.
 ## Workflow
 
 1. Open an issue first for larger changes, to agree on the approach.
-2. `npm install && npm test` must pass. For changes to delivery (relay, MCP, tmux), also run
+2. `npm install && npm run lint && npm test` must pass. For changes to delivery (relay, MCP, tmux), also run
    the real-agent suite if you can: `npm run test:e2e -- --use-local-logins`. The suite starts its own relay on a random port
    and never touches your real settings. tmux tests run when tmux 3.2+ is installed.
 3. Keep commits focused, and describe *why* in the message.

@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
+    "lint": "eslint .",
     "test:e2e": "node test/e2e/run.mjs"
   },
   "engines": {
@@ -49,5 +50,10 @@
   "homepage": "https://github.com/EminUZUN/palaver",
   "bugs": {
     "url": "https://github.com/EminUZUN/palaver/issues"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0"
   }
 }

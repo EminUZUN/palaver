@@ -10,7 +10,8 @@ First public version.
 - MCP server: `list_peers`, `send_message`, `wait_for_message`, `read_inbox`; push into
   Claude Code through channels when enabled, otherwise a private local inbox.
 - `palaver tmux`: run Codex or any terminal agent in tmux and paste incoming messages
-  into it, holding while an approval prompt is on screen.
+  into it, holding while an approval prompt is on screen; a message that looks like a prompt
+  is left for `read_inbox` instead of being typed.
 - CLI: `relay`, `mcp`, `tmux`, `list`, `send`, `wait`, `listen`.
 - Tested with Claude Code, Codex and Antigravity (`agy`).
 - Distribution: Claude Code plugin and marketplace (`/plugin install palaver --marketplace
@@ -20,7 +21,7 @@ First public version.
 - `npm run test:e2e`: opt-in real-agent test (Claude Code, Codex, Antigravity on two Docker
   machines: roll call and a baton across all agents), local only. CI runs on Linux with
   Node 20 and 22 only. Releases need no stored secrets (npm trusted publishing, GitHub OIDC).
-- Dockerfile, docker-compose and systemd examples; CI for GitLab and GitHub.
+- Dockerfile, docker-compose and systemd examples; CI for GitLab and GitHub; ESLint.
 - Hardened after an independent review: hostile hello frames cannot crash the relay;
   overlapping member names are refused; messages are confirmed only after they are
   stored; at most 50 unconfirmed messages per receiver, none dropped on disconnect;
