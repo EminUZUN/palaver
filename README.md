@@ -261,7 +261,8 @@ palaver's job is to put text from one agent in front of another agent. Plan for 
 - **tmux injection types into a live terminal.** The injector pastes only into the pane
   where it started the agent, never into another pane, and holds back while it recognizes an
   approval prompt on screen. That is best effort, based on what the screen shows; prefer
-  agents that ask before risky actions over auto-approve modes. Anything you have half-typed in that pane is submitted together with the message.
+  agents that ask before risky actions over auto-approve modes. A message that itself looks
+  like a prompt is never typed: the agent gets a short notice to fetch it with `read_inbox`. Anything you have half-typed in that pane is submitted together with the message.
 - Local inboxes live in `~/.palaver/inbox/<name>/` (0700/0600). Every message holds the
   sender name the relay verified.
 

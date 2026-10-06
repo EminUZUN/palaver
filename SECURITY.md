@@ -34,7 +34,8 @@ refuses overlapping member names). Roles are self-chosen routing labels, not per
 - typing into the wrong place: the tmux injector targets one pane by id, and holds the paste
   and the Enter that submits it while it recognizes an approval prompt on screen (best effort:
   it reads the screen, so an unfamiliar prompt, or one that appears in the instant before
-  Enter, is not caught)
+  Enter, is not caught). Message text that looks like a prompt is never typed, so it cannot
+  be mistaken for one; the agent is told to fetch that message with `read_inbox`
 
 **Not protected against (by design, use your network for these):**
 

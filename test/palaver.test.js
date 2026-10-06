@@ -8,6 +8,8 @@ import { spawnSync, execFileSync, execFile } from "node:child_process";
 import WebSocket from "ws";
 import { startRelay } from "../lib/relay.js";
 import { BIN } from "../lib/config.js";
+import * as inbox from "../lib/inbox.js";
+import { looksLikePrompt, waitingNotice } from "../lib/tmux.js";
 import { TOKEN, sleep, world } from "./helpers.js";
 import crypto from "node:crypto";
 
@@ -255,17 +257,35 @@ async function fakeAgentRun(t, { dialog, message }) {
   await a.call("send_message", { to: name, message });
   let keys = "";
   for (let i = 0; i < 40 && !keys; i++, await sleep(250)) keys = fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
-  return keys;
+  const screen = execFileSync("tmux", ["capture-pane", "-p", "-J", "-t", pane], { encoding: "utf8" });
+  const left = fs.readdirSync(path.join(w.home, "inbox", name)).filter((f) => f.endsWith(".json")).length;
+  return { keys, screen, left };
 }
 
+const QUOTED_DIALOG = 'Please review this dialog text:\nDo you want to proceed?\n> 1. Yes\n  2. No';
+
 test("tmux injector holds Enter when an approval prompt appears after the paste", { skip: !hasTmux && "tmux not installed" }, async (t) => {
-  const keys = await fakeAgentRun(t, { dialog: true, message: "please run the tests" });
+  const { keys, left } = await fakeAgentRun(t, { dialog: true, message: "please run the tests" });
   assert.equal(keys, "enter while closed\n", "Enter must wait until the approval prompt is gone");
+  assert.equal(left, 0);
+});
+
+test("tmux injector holds Enter for a real prompt even when the message quotes one", { skip: !hasTmux && "tmux not installed" }, async (t) => {
+  const { keys, screen, left } = await fakeAgentRun(t, { dialog: true, message: QUOTED_DIALOG });
+  assert.equal(keys, "enter while closed\n", "Enter must wait until the approval prompt is gone");
+  assert.equal(left, 1, "the message stays in the inbox for read_inbox");
+  assert.doesNotMatch(screen, /review this dialog/);
 });
 
 test("tmux injector submits a message that quotes an approval question", { skip: !hasTmux && "tmux not installed" }, async (t) => {
-  const keys = await fakeAgentRun(t, { dialog: false, message: 'Please review the string "Do you want to proceed?" and [y/N] in our dialog code.' });
-  assert.equal(keys, "enter while typing\n", "our own pasted text was taken for an approval prompt");
+  const { keys, screen, left } = await fakeAgentRun(t, { dialog: false, message: QUOTED_DIALOG });
+  assert.equal(keys, "enter while typing\n", "the injector held a message that quotes a prompt");
+  assert.match(screen, /message from "alice" is waiting.*read_inbox/);
+  assert.equal(left, 1, "the message stays in the inbox for read_inbox");
+  // The notice itself never looks like a prompt, and ordinary messages are typed in full.
+  assert.ok(!looksLikePrompt(waitingNotice("alice")));
+  assert.ok(!looksLikePrompt(`${inbox.format({ from: "a", fromHost: "h", ts: 0, text: "1. run the tests\n2. reply" })} ${inbox.NOT_YOUR_USER}`));
+  for (const s of ["Do you want to proceed?", "1. Yes", "Continue? (y/n)", "trust this folder"]) assert.ok(looksLikePrompt(s), s);
 });
 
 test("palaver tmux hands the caller's settings to the agent, over stale tmux server values", { skip: !hasTmux && "tmux not installed" }, async (t) => {
