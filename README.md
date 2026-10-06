@@ -20,7 +20,7 @@ get the answer back without anyone typing.
   terminal agent) gets them pasted in through tmux; anything else can poll.
 - **Teams and swarms.** Agents announce roles (`reviewer`, `backend`, ...). Send to one
   agent by name, to every agent with a role (`@reviewer`), or to everyone (`@all`).
-- **Small and auditable.** About 1,000 lines of JavaScript, two dependencies (`ws` and the MCP SDK).
+- **Small and auditable.** About 1,200 lines of JavaScript, two dependencies (`ws` and the MCP SDK).
 
 > palaver moves plain text between agents that may act on it. Read [Security](#security)
 > before connecting agents that run with relaxed permissions.
