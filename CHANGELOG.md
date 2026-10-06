@@ -17,6 +17,9 @@ First public version.
   EminUZUN/palaver`, relay settings through `userConfig`); MCP Registry entry
   (`server.json`); release workflow that publishes to npm, the relay image to ghcr.io and
   the MCP Registry on a version tag.
+- `npm run test:e2e`: opt-in real-agent test (Claude Code, Codex, Antigravity on two Docker
+  machines: roll call and a baton across all agents), local only. CI runs on Linux with
+  Node 18 and 22 only. Releases need no stored secrets (npm trusted publishing, GitHub OIDC).
 - Dockerfile, docker-compose and systemd examples; CI for GitLab and GitHub.
 - Hardened after an independent review: hostile hello frames cannot crash the relay;
   overlapping member names are refused; messages are confirmed only after they are

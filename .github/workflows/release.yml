@@ -1,6 +1,7 @@
-# Release on a version tag: git tag v0.1.0 && git push origin v0.1.0
-# Needs the repository secret NPM_TOKEN (an npm automation token). The relay image goes
-# to ghcr.io/<owner>/palaver and the server entry to the official MCP Registry.
+# Release on a version tag: git tag -s v0.1.0 -m v0.1.0 && git push origin v0.1.0
+# No secrets are stored anywhere: npm uses trusted publishing (OIDC; configure it once on
+# npmjs.com after the first manual `npm publish`), the relay image goes to ghcr.io with the
+# built-in GITHUB_TOKEN, and the MCP Registry entry is published with GitHub OIDC.
 name: release
 on:
   push:
@@ -9,7 +10,7 @@ on:
 permissions:
   contents: read
   packages: write # ghcr.io image
-  id-token: write # npm provenance and MCP Registry login
+  id-token: write # npm trusted publishing and MCP Registry login
 
 jobs:
   release:
@@ -30,10 +31,15 @@ jobs:
           test "$(node -p 'require("./package.json").version')" = "$v"
           test "$(node -p 'require("./server.json").version')" = "$v"
 
-      - name: Publish to npm
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to npm (trusted publishing; skipped if this version is already published)
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          if npm view "palaver-agents@$v" version >/dev/null 2>&1; then
+            echo "palaver-agents@$v is already on npm"
+          else
+            npm install -g npm@latest # trusted publishing needs npm 11.5.1+
+            npm publish --access public
+          fi
 
       - name: Publish the relay image to ghcr.io
         run: |

@@ -19,7 +19,8 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node test/e2e/run.mjs"
   },
   "engines": {
     "node": ">=18.17"
@@ -40,5 +41,13 @@
     "@modelcontextprotocol/sdk": "^1.32.1",
     "ws": "^8.22.0"
   },
-  "mcpName": "io.github.EminUZUN/palaver"
+  "mcpName": "io.github.EminUZUN/palaver",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EminUZUN/palaver.git"
+  },
+  "homepage": "https://github.com/EminUZUN/palaver",
+  "bugs": {
+    "url": "https://github.com/EminUZUN/palaver/issues"
+  }
 }

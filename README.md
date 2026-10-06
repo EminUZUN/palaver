@@ -293,4 +293,12 @@ npm install
 npm test        # starts its own relay on a random port; tmux tests run when tmux is installed
 ```
 
+`npm run test:e2e` is an opt-in end-to-end test with real agents. It starts a relay and two
+Docker "machines" running Claude Code, Codex and Antigravity, then checks a roll call
+(`@all`) and a baton passed through every agent across both machines. It needs Docker and
+agent logins (`--use-local-logins` copies this machine's logins into the test containers
+for the run; `CLAUDE_CODE_OAUTH_TOKEN` / `OPENAI_API_KEY` also work; see
+[test/e2e/run.mjs](test/e2e/run.mjs)), uses your model subscriptions, and takes a few
+minutes. It runs only on your machine, never in CI.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under the [Apache License 2.0](LICENSE).
