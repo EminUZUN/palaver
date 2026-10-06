@@ -1,0 +1,33 @@
+{
+  "name": "palaver",
+  "version": "0.1.0",
+  "description": "Messaging between AI coding agents (Claude Code, Codex, ...) over your own self-hosted relay, with push delivery as a Claude Code channel.",
+  "author": { "name": "Emin Uzun", "url": "https://github.com/EminUZUN" },
+  "homepage": "https://github.com/EminUZUN/palaver",
+  "repository": "https://github.com/EminUZUN/palaver",
+  "license": "Apache-2.0",
+  "keywords": ["mcp", "channel", "agents", "messaging", "codex"],
+  "userConfig": {
+    "relay_url": {
+      "type": "string",
+      "title": "Relay URL",
+      "description": "Your palaver relay, e.g. ws://10.0.0.5:7777 or wss://relay.example.com. Leave empty to use ~/.config/palaver/.env."
+    },
+    "relay_token": {
+      "type": "string",
+      "title": "Relay token",
+      "description": "Shared or per-member token for the relay. Leave empty to use ~/.config/palaver/.env.",
+      "sensitive": true
+    }
+  },
+  "mcpServers": {
+    "palaver": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/palaver.js", "mcp"],
+      "env": {
+        "PALAVER_RELAY": "${user_config.relay_url}",
+        "PALAVER_TOKEN": "${user_config.relay_token}"
+      }
+    }
+  }
+}

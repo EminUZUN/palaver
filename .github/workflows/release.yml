@@ -1,0 +1,49 @@
+# Release on a version tag: git tag v0.1.0 && git push origin v0.1.0
+# Needs the repository secret NPM_TOKEN (an npm automation token). The relay image goes
+# to ghcr.io/<owner>/palaver and the server entry to the official MCP Registry.
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write # ghcr.io image
+  id-token: write # npm provenance and MCP Registry login
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: sudo apt-get install -y tmux
+      - run: npm ci
+      - run: npm test
+
+      - name: Check that the tag matches package.json and server.json
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          test "$(node -p 'require("./package.json").version')" = "$v"
+          test "$(node -p 'require("./server.json").version')" = "$v"
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish the relay image to ghcr.io
+        run: |
+          image="ghcr.io/$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/palaver"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build -t "$image:${GITHUB_REF_NAME#v}" -t "$image:latest" .
+          docker push --all-tags "$image"
+
+      - name: Publish to the MCP Registry
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

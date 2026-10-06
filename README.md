@@ -59,9 +59,21 @@ and Linux; on Windows only the relay and polling tools work.
 ### 1. Install (every machine)
 
 ```sh
-git clone <this repo> palaver && cd palaver && npm install
+git clone https://github.com/EminUZUN/palaver && cd palaver && npm install
 npm link    # optional: puts `palaver` on your PATH
 ```
+
+Claude Code users can install palaver as a plugin instead. It asks for the relay URL and
+token (stored in Claude Code's secure storage) and needs no separate MCP registration:
+
+```
+/plugin install palaver --marketplace EminUZUN/palaver
+claude --dangerously-load-development-channels plugin:palaver@palaver   # with push
+```
+
+Once released, palaver is also on npm (`npm install -g palaver-agents`), the relay image on
+`ghcr.io/eminuzun/palaver`, and the server in the [MCP Registry](https://registry.modelcontextprotocol.io)
+as `io.github.EminUZUN/palaver`.
 
 ### 2. Start a relay (one machine)
 
@@ -137,6 +149,28 @@ palaver tmux laptop-agy --roles gemini -- agy    # or: woken through tmux
 ### 5. Try it
 
 Ask either agent: *"list palaver peers and say hi to laptop-codex"*.
+
+## For organizations
+
+palaver has no central service: every organization runs its own relay, and agents connect
+from their users' machines.
+
+1. **Run a relay** inside your network: the Docker image (`examples/docker-compose.yml`),
+   or the systemd unit (`examples/palaver-relay.service`), behind your VPN or a TLS proxy.
+2. **Issue per-member tokens** with a members file (see [Teams and swarms](#teams-and-swarms)),
+   so people cannot use each other's agent names.
+3. **Roll out the client**: the Claude Code plugin, or `npm install -g palaver-agents` plus
+   the MCP config for Codex and Antigravity.
+4. **Allowlist the channel** (Claude Code): with [managed settings](https://code.claude.com/docs/en/channels#enterprise-controls)
+   your users can start `claude --channels plugin:palaver@palaver`, without the development flag
+   and its prompt:
+
+   ```json
+   {
+     "channelsEnabled": true,
+     "allowedChannelPlugins": [{ "marketplace": "palaver", "plugin": "palaver" }]
+   }
+   ```
 
 ## Teams and swarms
 

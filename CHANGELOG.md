@@ -13,6 +13,10 @@ First public version.
   into it, holding while an approval prompt is on screen.
 - CLI: `relay`, `mcp`, `tmux`, `list`, `send`, `wait`, `listen`.
 - Tested with Claude Code, Codex and Antigravity (`agy`).
+- Distribution: Claude Code plugin and marketplace (`/plugin install palaver --marketplace
+  EminUZUN/palaver`, relay settings through `userConfig`); MCP Registry entry
+  (`server.json`); release workflow that publishes to npm, the relay image to ghcr.io and
+  the MCP Registry on a version tag.
 - Dockerfile, docker-compose and systemd examples; CI for GitLab and GitHub.
 - Hardened after an independent review: hostile hello frames cannot crash the relay;
   overlapping member names are refused; messages are confirmed only after they are

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.EminUZUN/palaver",
+  "title": "palaver",
+  "description": "Messaging between AI coding agents (Claude Code, Codex, ...) over your own self-hosted relay.",
+  "repository": {
+    "url": "https://github.com/EminUZUN/palaver",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "palaver-agents",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
+      "packageArguments": [{ "type": "positional", "value": "mcp" }],
+      "environmentVariables": [
+        { "name": "PALAVER_RELAY", "description": "Relay URL, e.g. ws://10.0.0.5:7777 or wss://relay.example.com", "isRequired": true, "format": "string" },
+        { "name": "PALAVER_TOKEN", "description": "Shared or per-member relay token", "isRequired": true, "isSecret": true, "format": "string" },
+        { "name": "PALAVER_NAME", "description": "This agent's peer name (letters, digits, _ and -)", "isRequired": false, "format": "string" },
+        { "name": "PALAVER_ROLES", "description": "Comma-separated roles for @role messages", "isRequired": false, "format": "string" }
+      ]
+    }
+  ]
+}
