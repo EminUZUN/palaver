@@ -230,6 +230,7 @@ async function fakeAgentRun(t, { dialog, message }) {
   const name = `ta${process.pid}${dialog ? "d" : "q"}`;
   const session = `palaver-${name}`;
   const log = path.join(w.home, "keys.log");
+  const seen = path.join(w.home, "inbox-at-enter");
   t.after(async () => {
     spawnSync("tmux", ["kill-session", "-t", `=${session}`]);
     await w.close();
@@ -241,7 +242,12 @@ async function fakeAgentRun(t, { dialog, message }) {
     process.stdin.setRawMode(true);
     process.stdin.on("data", (d) => {
       const s = d.toString();
-      if (s === "\\r") return fs.appendFileSync(${JSON.stringify(log)}, "enter while " + phase + "\\n");
+      if (s === "\\r") {
+        // What an agent that reads its inbox right away would find.
+        const waiting = fs.readdirSync(${JSON.stringify(path.join(w.home, "inbox", name))}).filter((f) => /^\\d.*\\.json$/.test(f)).length;
+        fs.writeFileSync(${JSON.stringify(seen)}, String(waiting));
+        return fs.appendFileSync(${JSON.stringify(log)}, "enter while " + phase + "\\n");
+      }
       process.stdout.write(s.split("\\r").map((l) => "│ > " + l).join("\\r\\n") + "\\r\\n");
       if (phase === "idle" && ${Boolean(dialog)}) {
         phase = "approval";
@@ -259,7 +265,7 @@ async function fakeAgentRun(t, { dialog, message }) {
   for (let i = 0; i < 40 && !keys; i++, await sleep(250)) keys = fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
   const screen = execFileSync("tmux", ["capture-pane", "-p", "-J", "-t", pane], { encoding: "utf8" });
   const left = fs.readdirSync(path.join(w.home, "inbox", name)).filter((f) => f.endsWith(".json")).length;
-  return { keys, screen, left };
+  return { keys, screen, left, atEnter: fs.existsSync(seen) ? Number(fs.readFileSync(seen, "utf8")) : null };
 }
 
 const QUOTED_DIALOG = 'Please review this dialog text:\nDo you want to proceed?\n> 1. Yes\n  2. No';
@@ -278,8 +284,9 @@ test("tmux injector holds Enter for a real prompt even when the message quotes o
 });
 
 test("tmux injector submits a message that quotes an approval question", { skip: !hasTmux && "tmux not installed" }, async (t) => {
-  const { keys, screen, left } = await fakeAgentRun(t, { dialog: false, message: QUOTED_DIALOG });
+  const { keys, screen, left, atEnter } = await fakeAgentRun(t, { dialog: false, message: QUOTED_DIALOG });
   assert.equal(keys, "enter while typing\n", "the injector held a message that quotes a prompt");
+  assert.equal(atEnter, 1, "read_inbox right after the notice must find the message");
   assert.match(screen, /message from "alice" is waiting.*read_inbox/);
   assert.equal(left, 1, "the message stays in the inbox for read_inbox");
   // The notice itself never looks like a prompt, and ordinary messages are typed in full.
