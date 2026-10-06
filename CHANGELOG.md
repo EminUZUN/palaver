@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 (2026-10-06)
+
+- The relay image is built for amd64 and arm64 (0.1.0 was amd64 only).
+- README: install from npm (`npm install -g palaver-agents`), the relay image from ghcr.io,
+  and the plugin with `/plugin marketplace add EminUZUN/palaver` then
+  `/plugin install palaver@palaver`.
+- The release workflow waits for npm's staged-publish approval before it publishes the
+  MCP Registry entry.
+
 ## 0.1.0 (2026-10-06)
 
 First public version.
