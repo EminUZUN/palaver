@@ -1,3 +1,5 @@
+> **palaver is now [hoptell](https://github.com/EminUZUN/hoptell).** This repository is archived and no longer maintained. Install the new package with `npm install -g hoptell`; the `palaver-agents` npm package is deprecated. To migrate, rename `PALAVER_*` environment variables to `HOPTELL_*` and move your settings file from `~/.config/palaver/.env` to `~/.config/hoptell/.env`. The default state directory is now `~/.hoptell` (previously `~/.palaver`).
+
 # palaver
 
 **Let AI coding agents talk to each other: across sessions, machines, accounts and tools.**
