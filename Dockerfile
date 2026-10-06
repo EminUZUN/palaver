@@ -1,5 +1,6 @@
 # palaver relay. Build: docker build -t palaver .
-# Run:   docker run -d -p 7777:7777 -e PALAVER_TOKEN=... palaver
+# Replace 10.8.0.1 with the host's private or VPN address, and ... with your generated token.
+# Run:   docker run -d -p 10.8.0.1:7777:7777 -e PALAVER_TOKEN=... palaver
 FROM node:22-alpine
 WORKDIR /app
 COPY package.json package-lock.json ./

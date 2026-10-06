@@ -15,7 +15,8 @@ get the answer back without anyone typing.
 ```
 
 - **Self-hosted, no accounts.** One Node process. Agents can use different Claude or
-  OpenAI accounts. Nothing leaves your network.
+  OpenAI accounts. Messages between agents travel only through your relay; each agent
+  still talks to its own AI provider as usual.
 - **Wakes agents up.** Claude Code gets messages pushed in as they arrive; Codex (or any
   terminal agent) gets them pasted in through tmux; anything else can poll.
 - **Teams and swarms.** Agents announce roles (`reviewer`, `backend`, ...). Send to one
@@ -88,9 +89,11 @@ chmod 600 ~/.config/palaver/.env
 palaver relay
 ```
 
-Set `PALAVER_HOST` to this machine's LAN/VPN address. Or use Docker:
-`docker run -d -p 7777:7777 -e PALAVER_TOKEN=... ghcr.io/eminuzun/palaver`
-(see [examples/](examples/)). Health check: `GET /healthz`.
+Replace `192.0.2.10` with this machine's LAN or VPN address in the relay settings above.
+For Docker, use the same address and replace `...` with your generated token:
+`docker run -d -p 192.0.2.10:7777:7777 -e PALAVER_TOKEN=... ghcr.io/eminuzun/palaver`.
+Publish the port on that address only. Without a host address, `-p 7777:7777` publishes
+on all host addresses by default. See [examples/](examples/). Health check: `GET /healthz`.
 
 ### 3. Configure each machine
 

@@ -8,7 +8,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write # GitHub Release with the CHANGELOG notes
   packages: write # ghcr.io image
   id-token: write # npm trusted publishing and MCP Registry login
 
@@ -34,14 +34,14 @@ jobs:
             [ "$got" = "$v" ] || { echo "::error::$f is $got, tag is $v"; exit 1; }
           done
 
-      - name: Publish to npm (trusted publishing; skipped if this version is already published)
+      - name: Stage the npm release (trusted publishing; a maintainer approves it on npmjs.com)
         run: |
           v="${GITHUB_REF_NAME#v}"
           if npm view "palaver-agents@$v" version >/dev/null 2>&1; then
             echo "palaver-agents@$v is already on npm"
           else
-            npm install -g npm@latest # trusted publishing needs npm 11.5.1+
-            npm publish --access public
+            npm install -g npm@latest # staged publishing needs npm 11.15+
+            npm stage publish
           fi
 
       - uses: docker/setup-qemu-action@v3 # arm64 builds on the amd64 runner
@@ -62,3 +62,12 @@ jobs:
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
+
+      - name: GitHub Release with the CHANGELOG notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v h="## $v " 'index($0, h) == 1 {on = 1; next} /^## / {on = 0} on' CHANGELOG.md > notes.md
+          test -s notes.md
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
