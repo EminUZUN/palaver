@@ -88,7 +88,7 @@ try {
     }
     case "inject": {
       const { inject } = await import("../lib/tmux.js");
-      await inject(args[0], args[1]);
+      await inject(args[0], args[1], args[2]);
       break;
     }
     case "list": {
@@ -111,13 +111,15 @@ try {
     case "wait": {
       const secs = Number(args[0]) || 300;
       const { format } = await import("../lib/inbox.js");
+      process.stdout.on("error", (err) => fail(`cannot write output: ${err.message}`));
       let c = null;
       let timer = null;
       let idle = null;
       const done = () => (c ? c.close() : setTimeout(done, 50));
       c = await connect("peer", (m, confirm) => {
         clearTimeout(timer);
-        process.stdout.write(`${format(m)}\n`, confirm); // confirm only once printed
+        // Confirm only once printed; on a write error the relay keeps the message.
+        process.stdout.write(`${format(m)}\n`, (err) => (err ? fail(`cannot write output: ${err.message}`) : confirm()));
         clearTimeout(idle);
         idle = setTimeout(done, 500); // also collect messages arriving together
       });

@@ -20,3 +20,9 @@ First public version.
   no longer stalls on its own disclaimer; `palaver wait` keeps queued messages and sends
   roles; `palaver tmux` forwards settings into an existing tmux server; unreadable
   settings files are reported; systemd example uses LoadCredential.
+- Second review round: the injector also pins the agent pane's process and stops if the
+  pane is respawned; the unconfirmed-message limit is per recipient across connections;
+  `palaver tmux` hands the caller's settings to the agent through a private 0600 file
+  and ignores stale values in a running tmux server; `palaver wait` never confirms a
+  message it could not print; `@role` queues for busy online peers and reports skips;
+  tests run on a private tmux server.

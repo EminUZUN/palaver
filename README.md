@@ -137,7 +137,8 @@ old one.
 
 **Roles.** `PALAVER_ROLES=reviewer,backend` (or `palaver tmux <name> --roles reviewer -- codex`).
 `list_peers` shows them. Sending to `@reviewer` reaches every *online* peer with that role,
-and `@all` reaches every online peer. Fan-out is not queued for offline peers. A direct
+and `@all` reaches every online peer. A busy peer gets it queued behind its unconfirmed
+messages. Fan-out is not queued for offline peers. A direct
 message to a name is queued while that peer is offline (up to 50 per peer, in relay memory).
 Roles are labels that agents choose for themselves to route work. They are not permissions.
 

@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import net from "node:net";
@@ -10,6 +10,16 @@ import { startRelay } from "../lib/relay.js";
 import { BIN } from "../lib/config.js";
 import { TOKEN, sleep, world } from "./helpers.js";
 import crypto from "node:crypto";
+
+// tmux tests run on a private tmux server, never the developer's own sessions.
+const TMUX_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "palaver-tmux-"));
+process.env.TMUX_TMPDIR = TMUX_DIR;
+delete process.env.TMUX;
+delete process.env.TMUX_PANE;
+after(() => {
+  spawnSync("tmux", ["kill-server"]);
+  fs.rmSync(TMUX_DIR, { recursive: true, force: true });
+});
 
 const closeCode = (url, hello) =>
   new Promise((resolve) => {
@@ -176,10 +186,10 @@ test("tmux injector: exact pane, consecutive messages, newlines, holds on approv
   });
   // A fake agent: shows an approval prompt for 3s, clears the screen, then echoes input.
   const fake = `printf 'Do you want to proceed?\\n  1. Yes\\n'; sleep 3; printf '\\033[2J\\033[H'; exec cat`;
-  const pane = execFileSync("tmux", ["new-session", "-d", "-P", "-F", "#{pane_id}", "-s", session, "-n", "agent", "-x", "200", "-y", "50", "sh", "-c", fake], { encoding: "utf8" }).trim();
+  const [pane, pid] = execFileSync("tmux", ["new-session", "-d", "-P", "-F", "#{pane_id} #{pane_pid}", "-s", session, "-n", "agent", "-x", "200", "-y", "50", "sh", "-c", fake], { encoding: "utf8" }).trim().split(" ");
   // The user splits the window: a shell pane becomes the active one. Nothing may be typed into it.
   execFileSync("tmux", ["split-window", "-t", pane, "sh"]);
-  execFileSync("tmux", ["new-window", "-d", "-t", `=${session}`, "-n", "injector", `env PALAVER_HOME='${w.home}' '${process.execPath}' '${BIN}' inject ${name} '${pane}'`]);
+  execFileSync("tmux", ["new-window", "-d", "-t", `=${session}`, "-n", "injector", `env PALAVER_HOME='${w.home}' '${process.execPath}' '${BIN}' inject ${name} '${pane}' ${pid}`]);
   const a = await w.mcp("alice");
   await w.mcp(name);
   await a.call("send_message", { to: name, message: `line one\ntouch ${marker}` });
@@ -202,23 +212,56 @@ test("tmux injector: exact pane, consecutive messages, newlines, holds on approv
   assert.ok(!fs.existsSync(marker), "message text reached the shell pane");
 });
 
-test("palaver tmux forwards settings into an already running tmux server", { skip: !hasTmux && "tmux not installed" }, async (t) => {
+test("palaver tmux hands the caller's settings to the agent, over stale tmux server values", { skip: !hasTmux && "tmux not installed" }, async (t) => {
   const w = await world();
   const name = `tl${process.pid}`;
   const session = `palaver-${name}`;
+  const out = path.join(w.home, "agent-out.txt");
   t.after(async () => {
     spawnSync("tmux", ["kill-session", "-t", `=${session}`]);
     await w.close();
   });
-  const r = await w.cli(["tmux", name, "--roles", "backend", "--", "cat"], { PALAVER_RELAY: "ws://example.invalid:7777" });
+  // An already running tmux server that holds a stale token and relay.
+  spawnSync("tmux", ["start-server", ";", "set-environment", "-g", "PALAVER_TOKEN", "stale-token-0123456789abc", ";", "set-environment", "-g", "PALAVER_RELAY", "ws://127.0.0.1:1"]);
+  // The "agent" lists peers with whatever settings it inherited.
+  const agent = `'${process.execPath}' '${BIN}' list > '${out}' 2>&1; sleep 30`;
+  const r = await w.cli(["tmux", name, "--roles", "backend", "--", "sh", "-c", agent]);
   assert.match(r.stderr, /attach with: tmux attach/); // no terminal in tests; the session still runs
+  let text = "";
+  for (let i = 0; i < 50 && !text; i++, await sleep(100)) text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : "";
+  assert.match(text, /no other peers|online/, `agent used stale settings: ${text}`);
+
   const env = execFileSync("tmux", ["show-environment", "-t", `=${session}`], { encoding: "utf8" });
-  assert.match(env, /^PALAVER_RELAY=ws:\/\/example\.invalid:7777$/m);
-  assert.match(env, new RegExp(`^PALAVER_HOME=${w.home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"));
   assert.match(env, /^PALAVER_ROLES=backend$/m);
-  assert.doesNotMatch(env, /PALAVER_TOKEN=/);
+  assert.match(env, /^PALAVER_TOKEN=$/m); // blanked, never the secret itself
+  const file = env.match(/^PALAVER_ENV=(.*)$/m)[1];
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.match(fs.readFileSync(file, "utf8"), new RegExp(`PALAVER_TOKEN="${TOKEN}"`));
   const injector = execFileSync("tmux", ["list-panes", "-t", `=${session}:injector`, "-F", "#{pane_start_command}"], { encoding: "utf8" });
-  assert.match(injector, /inject .*%\d+/);
+  assert.match(injector, /inject .*%\d+'? '?\d+/);
+  assert.doesNotMatch(injector, new RegExp(TOKEN));
+});
+
+test("injector stops when the agent pane is respawned with another process", { skip: !hasTmux && "tmux not installed" }, async (t) => {
+  const w = await world();
+  const name = `tr${process.pid}`;
+  const session = `palaver-${name}`;
+  const marker = path.join(w.home, "shell-ran-it");
+  t.after(async () => {
+    spawnSync("tmux", ["kill-session", "-t", `=${session}`]);
+    await w.close();
+  });
+  await w.cli(["tmux", name, "--", "cat"]);
+  const pane = execFileSync("tmux", ["list-panes", "-t", `=${session}:agent`, "-F", "#{pane_id}"], { encoding: "utf8" }).trim();
+  execFileSync("tmux", ["respawn-pane", "-k", "-t", pane, "sh"]); // same pane id, different process
+  await sleep(500);
+  const a = await w.mcp("alice");
+  await w.mcp(name);
+  await a.call("send_message", { to: name, message: `touch ${marker}` });
+  await sleep(2500);
+  assert.ok(!fs.existsSync(marker), "message text reached the respawned shell");
+  const left = fs.readdirSync(path.join(w.home, "inbox", name)).filter((f) => f.endsWith(".json"));
+  assert.equal(left.length, 1, "the undelivered message stays in the inbox");
 });
 
 test("member tokens bind names; health endpoint; protocol version", async (t) => {
@@ -390,4 +433,79 @@ test("an unreadable or missing explicit settings file is an error, not silently 
     const r = await w.cli(["list"], { PALAVER_ENV: locked });
     assert.match(r.stderr, /cannot read settings file .*EACCES/);
   }
+});
+
+test("a replaced connection that is still closing does not get a second unconfirmed budget", async (t) => {
+  const w = await world();
+  t.after(() => w.close());
+  const peer = async () => {
+    const ws = new WebSocket(w.env.PALAVER_RELAY);
+    await new Promise((r) => ws.on("open", r));
+    ws.send(JSON.stringify({ type: "hello", v: 1, name: "bob", token: TOKEN }));
+    await new Promise((r) => ws.once("message", r));
+    let got = 0;
+    ws.on("message", (d) => JSON.parse(d).type === "message" && got++);
+    return { ws, got: () => got };
+  };
+  const send = (n, from) => Promise.all(Array.from({ length: n }, (_, i) => w.cli(["send", "bob", `${from}-${i}`], { PALAVER_NAME: from })));
+  const first = await peer();
+  await Promise.all([send(25, "s1"), send(25, "s2")]);
+  assert.equal(first.got(), 50);
+  first.ws._socket.pause(); // never reads the relay's close frame: stays "closing"
+  const second = await peer(); // replaces the first
+  await send(10, "s3");
+  assert.equal(second.got(), 0, "the replacement must not receive beyond the shared limit");
+  first.ws.terminate();
+  second.ws.terminate();
+  await sleep(300);
+  const b = await w.mcp("bob");
+  let received = 0;
+  for (let i = 0; i < 20; i++) {
+    const out = await b.call("wait_for_message", { timeout_seconds: 1 });
+    received += (out.match(/--- palaver message /g) || []).length;
+    if (/No messages/.test(out)) break;
+  }
+  assert.equal(received, 60);
+});
+
+test("palaver wait does not confirm a message it could not print", async (t) => {
+  const w = await world();
+  t.after(() => w.close());
+  const a = await w.mcp("alice");
+  await w.cli(["wait", "1"], { PALAVER_NAME: "carol" }); // make carol known
+  const ro = fs.openSync(path.join(w.home, "empty.env"), "r"); // a read-only "stdout"
+  t.after(() => fs.closeSync(ro));
+  const { spawn } = await import("node:child_process");
+  const child = spawn(process.execPath, [BIN, "wait", "10"], { env: { ...w.env, PALAVER_NAME: "carol" }, stdio: ["ignore", ro, "pipe"] });
+  const exited = new Promise((r) => child.on("exit", r));
+  for (let i = 0; i < 50 && !/carol .*online/.test(await a.call("list_peers")); i++) await sleep(100);
+  assert.doesNotMatch(await a.call("send_message", { to: "carol", message: "do not lose me" }), /^Delivered/);
+  assert.notEqual(await exited, 0);
+  await sleep(300);
+  assert.match((await w.cli(["wait", "3"], { PALAVER_NAME: "carol" })).stdout, /do not lose me/);
+});
+
+test("@role reaches busy online peers too (queued), and reports skips", async (t) => {
+  const w = await world();
+  t.after(() => w.close());
+  // A busy peer with the role: it receives but never confirms.
+  const busy = new WebSocket(w.env.PALAVER_RELAY);
+  await new Promise((r) => busy.on("open", r));
+  busy.send(JSON.stringify({ type: "hello", v: 1, name: "busy", token: TOKEN, roles: ["worker"] }));
+  await new Promise((r) => busy.once("message", r));
+  await Promise.all(Array.from({ length: 50 }, (_, i) => w.cli(["send", "busy", `fill-${i}`], { PALAVER_NAME: `f${i % 2}` })));
+  const healthy = await w.mcp("healthy", { PALAVER_ROLES: "worker" });
+  const lead = await w.mcp("lead");
+  assert.equal(await lead.call("send_message", { to: "@worker", message: "the job" }), "Sent to 2 online peer(s) matching @worker.");
+  assert.match(await healthy.call("wait_for_message", { timeout_seconds: 5 }), /the job/);
+  busy.terminate();
+  await sleep(300);
+  const b = await w.mcp("busy", { PALAVER_ROLES: "worker" });
+  let all = "";
+  for (let i = 0; i < 20; i++) {
+    const out = await b.call("wait_for_message", { timeout_seconds: 1 });
+    all += out;
+    if (/No messages/.test(out)) break;
+  }
+  assert.match(all, /the job/, "the busy peer must still get the role message");
 });
