@@ -44,8 +44,11 @@ How an incoming message reaches the agent:
 | Anything else | — | `wait_for_message` / `read_inbox` tools, or `palaver wait` |
 
 Push uses Claude Code's [channels](https://code.claude.com/docs/en/channels) (research
-preview). Custom channels need the `--dangerously-load-development-channels` flag. palaver
-detects the flag and adapts. Set `PALAVER_PUSH=channel|listener` to override the detection.
+preview). Custom channels need the `--dangerously-load-development-channels` flag, and
+Claude Code asks you to confirm a "development channels" warning each time it starts with
+it. palaver detects the flag and adapts. Set `PALAVER_PUSH=channel|listener` to override
+the detection. Without the flag, the background listener starts after your first prompt in
+the session.
 
 ## Quick start
 
