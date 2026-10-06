@@ -25,11 +25,14 @@ jobs:
       - run: npm ci
       - run: npm test
 
-      - name: Check that the tag matches package.json and server.json
+      - name: Check that the tag matches every pinned version
         run: |
           v="${GITHUB_REF_NAME#v}"
-          test "$(node -p 'require("./package.json").version')" = "$v"
-          test "$(node -p 'require("./server.json").version')" = "$v"
+          for f in 'require("./package.json").version' 'require("./server.json").version' \
+                   'require("./server.json").packages[0].version' 'require("./.claude-plugin/plugin.json").version'; do
+            got="$(node -p "$f")"
+            [ "$got" = "$v" ] || { echo "::error::$f is $got, tag is $v"; exit 1; }
+          done
 
       - name: Publish to npm (trusted publishing; skipped if this version is already published)
         run: |

@@ -31,8 +31,10 @@ refuses overlapping member names). Roles are self-chosen routing labels, not per
   and symlinked or foreign-owned directories are refused
 - runaway agents: 30 messages per 10 seconds per connection, 100,000 characters per
   message, bounded queues, at most 50 unconfirmed messages per receiver
-- typing into the wrong place: the tmux injector targets one pane by id and holds while an
-  approval prompt is visible
+- typing into the wrong place: the tmux injector targets one pane by id, and holds the paste
+  and the Enter that submits it while it recognizes an approval prompt on screen (best effort:
+  it reads the screen, so an unfamiliar prompt, or one that appears in the instant before
+  Enter, is not caught)
 
 **Not protected against (by design, use your network for these):**
 

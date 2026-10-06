@@ -23,7 +23,7 @@
     "test:e2e": "node test/e2e/run.mjs"
   },
   "engines": {
-    "node": ">=18.17"
+    "node": ">=20"
   },
   "keywords": [
     "claude-code",

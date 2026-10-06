@@ -1,8 +1,11 @@
-# Relay with per-member tokens. Put members.json next to this file (chmod 600).
+# Relay with per-member tokens. Put members.json next to this file, then:
+#   chmod 600 members.json && PALAVER_UID=$(id -u) docker compose up -d
+# The relay runs as the file's owner, so it can read the private file.
 services:
   palaver:
     build: ..
     restart: unless-stopped
+    user: "${PALAVER_UID:-1000}"
     ports:
       - "7777:7777" # bind to one interface, e.g. "10.8.0.1:7777:7777" for a VPN address
     environment:

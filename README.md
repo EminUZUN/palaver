@@ -53,7 +53,7 @@ the session.
 
 ## Quick start
 
-Requirements: Node.js 18.17+, plus tmux 3.2+ to wake Codex/terminal agents. Supported on macOS
+Requirements: Node.js 20+, plus tmux 3.2+ to wake Codex/terminal agents. Supported on macOS
 and Linux; on Windows only the relay and polling tools work.
 
 ### 1. Install (every machine)
@@ -259,8 +259,9 @@ palaver's job is to put text from one agent in front of another agent. Plan for 
   `caddy reverse-proxy --from relay.example.com --to 127.0.0.1:7777`, then use
   `PALAVER_RELAY=wss://relay.example.com`.
 - **tmux injection types into a live terminal.** The injector pastes only into the pane
-  where it started the agent, never into another pane, and waits while an approval prompt
-  is visible. Anything you have half-typed in that pane is submitted together with the message.
+  where it started the agent, never into another pane, and holds back while it recognizes an
+  approval prompt on screen. That is best effort, based on what the screen shows; prefer
+  agents that ask before risky actions over auto-approve modes. Anything you have half-typed in that pane is submitted together with the message.
 - Local inboxes live in `~/.palaver/inbox/<name>/` (0700/0600). Every message holds the
   sender name the relay verified.
 

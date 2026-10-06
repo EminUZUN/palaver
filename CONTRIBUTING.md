@@ -22,12 +22,16 @@ Thanks for helping. palaver aims to stay small, so please keep that in mind.
 
 ## Releasing (maintainers)
 
-1. Bump `version` in `package.json`, `server.json` and `.claude-plugin/plugin.json`; update CHANGELOG.md.
+1. Bump the version in `package.json`, `server.json` (both `version` and `packages[0].version`)
+   and `.claude-plugin/plugin.json`; update CHANGELOG.md. The release workflow refuses a tag
+   that does not match all four.
 2. `git tag -s vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`. The release workflow tests, then
    publishes npm (trusted publishing), the relay image to ghcr.io and the MCP Registry entry.
    No secrets are stored in the repository.
 3. First release only: publish once by hand (`npm publish --access public`), then add the
    repository as a trusted publisher in the package's npm settings (workflow `release.yml`).
+4. First release only: a new ghcr.io package is private. Make it public under the package's
+   settings on GitHub, then check an anonymous pull: `docker logout ghcr.io && docker pull ghcr.io/eminuzun/palaver`.
 
 ## Layout
 

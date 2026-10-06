@@ -35,6 +35,12 @@ test("relay refuses unsafe configuration", async () => {
   await assert.rejects(async () => startRelay({ host: "127.0.0.1", port: 0, token: "short" }), /16 characters/);
   await assert.rejects(async () => startRelay({ port: 0, token: TOKEN }), /host is required/);
   await assert.rejects(async () => startRelay({ host: "127.0.0.1", port: 0, members: [{ name: "a", token: "x" }] }), /member "a"/);
+  // A malformed hashed token would make every login throw in timingSafeEqual.
+  await assert.rejects(
+    async () => startRelay({ host: "127.0.0.1", port: 0, members: [{ name: "a", token: "sha256:invalid-hash-long-enough" }, { name: "b", token: "b".repeat(20) }] }),
+    /member "a".*64 hex/,
+  );
+  await assert.rejects(async () => startRelay({ host: "127.0.0.1", port: 0, token: `sha256:${"0".repeat(63)}` }), /64 hex/);
 });
 
 test("relay authenticates and survives malformed traffic", async (t) => {
@@ -210,6 +216,41 @@ test("tmux injector: exact pane, consecutive messages, newlines, holds on approv
   assert.match(s, /second message/, "the first message's disclaimer must not stall the next one");
   await sleep(500);
   assert.ok(!fs.existsSync(marker), "message text reached the shell pane");
+});
+
+test("tmux injector holds Enter when an approval prompt appears after the paste", { skip: !hasTmux && "tmux not installed" }, async (t) => {
+  const w = await world();
+  const session = `palaver-ta${process.pid}`;
+  const name = `ta${process.pid}`;
+  const log = path.join(w.home, "keys.log");
+  t.after(async () => {
+    spawnSync("tmux", ["kill-session", "-t", `=${session}`]);
+    await w.close();
+  });
+  // A fake agent that reaches an approval prompt right as our paste arrives, and logs
+  // whether a lone Enter came while the prompt was up or after it closed.
+  const fake = path.join(w.home, "fake-agent.cjs");
+  fs.writeFileSync(fake, `
+    const fs = require("fs");
+    let phase = "idle";
+    process.stdin.setRawMode(true);
+    process.stdin.on("data", (d) => {
+      if (phase === "idle") {
+        phase = "approval";
+        process.stdout.write("Do you want to proceed?\\r\\n  1. Yes\\r\\n");
+        setTimeout(() => { phase = "closed"; process.stdout.write("\\x1b[2J\\x1b[H"); }, 3000);
+      }
+      if (d.toString() === "\\r") fs.appendFileSync(${JSON.stringify(log)}, "enter while " + phase + "\\n");
+    });
+  `);
+  const [pane, pid] = execFileSync("tmux", ["new-session", "-d", "-P", "-F", "#{pane_id} #{pane_pid}", "-s", session, "-n", "agent", "-x", "200", "-y", "50", process.execPath, fake], { encoding: "utf8" }).trim().split(" ");
+  execFileSync("tmux", ["new-window", "-d", "-t", `=${session}`, "-n", "injector", `env PALAVER_HOME='${w.home}' '${process.execPath}' '${BIN}' inject ${name} '${pane}' ${pid}`]);
+  const a = await w.mcp("alice");
+  await w.mcp(name);
+  await a.call("send_message", { to: name, message: "please run the tests" });
+  let keys = "";
+  for (let i = 0; i < 40 && !keys; i++, await sleep(250)) keys = fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
+  assert.equal(keys, "enter while closed\n", "Enter must wait until the approval prompt is gone");
 });
 
 test("palaver tmux hands the caller's settings to the agent, over stale tmux server values", { skip: !hasTmux && "tmux not installed" }, async (t) => {

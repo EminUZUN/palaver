@@ -36,7 +36,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(`[e2e ${new Date().toISOString().slice(11, 19)}]`, ...a);
 
 const docker = (a, input) => execFileSync("docker", a, { encoding: "utf8", input, stdio: [input == null ? "ignore" : "pipe", "pipe", "pipe"] });
-const sh = (host, script, user = "agent") => docker(["exec", "-u", user, `${RUN}-${host}`, "bash", "-lc", script]);
+// Extra env names are passed by name only (docker reads the values from our environment),
+// so no secret ever appears in a command line or in an error message that echoes one.
+const sh = (host, script, user = "agent", envNames = []) => docker(["exec", ...envNames.flatMap((n) => ["-e", n]), "-u", user, `${RUN}-${host}`, "bash", "-lc", script]);
+const SECRETS = [process.env.CLAUDE_CODE_OAUTH_TOKEN, process.env.OPENAI_API_KEY].filter(Boolean);
+const redact = (s) => SECRETS.reduce((t, v) => t.split(v).join("[redacted]"), String(s));
 const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
 // ---------- logins ----------
@@ -198,8 +202,10 @@ try {
       const name = `${h}-${a}`;
       const env = `PALAVER_NAME=${name} PALAVER_ROLES=${ROLE[a]},${h}`;
       if (a === "claude") {
-        const tokenEnv = process.env.CLAUDE_CODE_OAUTH_TOKEN ? `-e CLAUDE_CODE_OAUTH_TOKEN=${q(process.env.CLAUDE_CODE_OAUTH_TOKEN)}` : "";
-        sh(h, `cd palaver && tmux new-session -d -s ${name} -x 200 -y 50 ${tokenEnv} -e PALAVER_NAME=${name} -e PALAVER_ROLES=${ROLE[a]},${h} "claude --allowedTools mcp__palaver --dangerously-load-development-channels server:palaver"`);
+        // The container's shell expands the token; it is not part of this command line.
+        const oauth = process.env.CLAUDE_CODE_OAUTH_TOKEN ? ["CLAUDE_CODE_OAUTH_TOKEN"] : [];
+        const tokenEnv = oauth.length ? `-e "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN"` : "";
+        sh(h, `cd palaver && tmux new-session -d -s ${name} -x 200 -y 50 ${tokenEnv} -e PALAVER_NAME=${name} -e PALAVER_ROLES=${ROLE[a]},${h} "claude --allowedTools mcp__palaver --dangerously-load-development-channels server:palaver"`, "agent", oauth);
         peers.push({ host: h, agent: a, name, target: name });
       } else {
         const cmd = a === "codex" ? "codex" : "agy --dangerously-skip-permissions";
@@ -257,7 +263,7 @@ start@e2e-tester`);
   }
   check(JSON.stringify(lines) === JSON.stringify(expected), `baton through ${order.length - 1} agents in order${attempt > 1 ? ` (needed ${attempt} attempts)` : ""}\n    got:      ${lines.join(" | ")}\n    expected: ${expected.join(" | ")}`);
 } catch (e) {
-  check(false, `run aborted: ${e.message}`);
+  check(false, `run aborted: ${redact(e.message)}`);
 } finally {
   if (results.some(([ok]) => !ok)) diagnose();
   cleanup();
