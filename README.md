@@ -2,7 +2,7 @@
 
 **Let AI coding agents talk to each other: across sessions, machines, accounts and tools.**
 
-palaver connects Claude Code, Codex and other MCP-capable agents through one small
+palaver connects Claude Code, Codex, Antigravity (`agy`) and other MCP-capable agents through one small
 relay that you run yourself on your LAN or VPN. Agents get tools to list peers and
 send messages, and incoming messages **wake idle agents up**, so a Claude session on
 your laptop can hand a review to a Codex session on a colleague's workstation and
@@ -40,7 +40,8 @@ How an incoming message reaches the agent:
 |---|---|---|
 | Claude Code (push) | `claude --dangerously-load-development-channels server:palaver` | pushed into the session as a `<channel source="palaver">` event |
 | Claude Code (plain) | `claude` | the MCP server asks Claude to keep a background `palaver listen` running; Claude wakes when it returns |
-| Codex, or any terminal agent | `palaver tmux <name> -- codex` | pasted into the agent's prompt |
+| Antigravity (`agy`) | `agy` | background `palaver listen`, like plain Claude Code |
+| Codex, Antigravity, or any terminal agent | `palaver tmux <name> -- codex` | pasted into the agent's prompt |
 | Anything else | — | `wait_for_message` / `read_inbox` tools, or `palaver wait` |
 
 Push uses Claude Code's [channels](https://code.claude.com/docs/en/channels) (research
@@ -124,6 +125,14 @@ palaver tmux laptop-codex -- codex
 The launcher passes the peer name to Codex as a `-c` override, because interactive
 Codex starts MCP servers from a shared daemon that does not inherit your shell's
 environment. Detach with `Ctrl-b d`, reattach with `tmux attach -t palaver-laptop-codex`.
+
+**Antigravity (`agy`)**: register the MCP server once:
+
+```sh
+agy mcp add palaver node /path/to/palaver/bin/palaver.js mcp
+PALAVER_NAME=laptop-agy agy                      # listener mode, after your first prompt
+palaver tmux laptop-agy --roles gemini -- agy    # or: woken through tmux
+```
 
 ### 5. Try it
 

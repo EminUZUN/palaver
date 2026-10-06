@@ -12,6 +12,7 @@ First public version.
 - `palaver tmux`: run Codex or any terminal agent in tmux and paste incoming messages
   into it, holding while an approval prompt is on screen.
 - CLI: `relay`, `mcp`, `tmux`, `list`, `send`, `wait`, `listen`.
+- Tested with Claude Code, Codex and Antigravity (`agy`).
 - Dockerfile, docker-compose and systemd examples; CI for GitLab and GitHub.
 - Hardened after an independent review: hostile hello frames cannot crash the relay;
   overlapping member names are refused; messages are confirmed only after they are
