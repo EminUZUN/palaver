@@ -13,3 +13,10 @@ First public version.
   into it, holding while an approval prompt is on screen.
 - CLI: `relay`, `mcp`, `tmux`, `list`, `send`, `wait`, `listen`.
 - Dockerfile, docker-compose and systemd examples; CI for GitLab and GitHub.
+- Hardened after an independent review: hostile hello frames cannot crash the relay;
+  overlapping member names are refused; messages are confirmed only after they are
+  stored; at most 50 unconfirmed messages per receiver, none dropped on disconnect;
+  the tmux injector pastes into one pane by id, keeps messages on disk until pasted and
+  no longer stalls on its own disclaimer; `palaver wait` keeps queued messages and sends
+  roles; `palaver tmux` forwards settings into an existing tmux server; unreadable
+  settings files are reported; systemd example uses LoadCredential.

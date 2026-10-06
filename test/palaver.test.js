@@ -97,7 +97,7 @@ test("offline peers get queued messages; unconfirmed messages are requeued", asy
   const sent = a.call("send_message", { to: "bob", message: "must not be lost" });
   await sleep(300);
   rogue.terminate();
-  assert.match(await sent, /offline; the relay queued/);
+  assert.match(await sent, /relay queued the message for bob/);
 
   assert.match(await a.call("send_message", { to: "bob", message: "second" }), /queued/);
   const b = await w.mcp("bob");
@@ -165,32 +165,60 @@ test("inbox is private and refuses a directory owned by someone else or a symlin
 
 const hasTmux = spawnSync("tmux", ["-V"]).status === 0;
 
-test("tmux injector pastes messages, keeps newlines, and holds on approval prompts", { skip: !hasTmux && "tmux not installed" }, async (t) => {
+test("tmux injector: exact pane, consecutive messages, newlines, holds on approval prompts", { skip: !hasTmux && "tmux not installed" }, async (t) => {
   const w = await world();
   const session = `palaver-tt${process.pid}`;
   const name = `tt${process.pid}`;
+  const marker = path.join(w.home, "shell-ran-it");
   t.after(async () => {
     spawnSync("tmux", ["kill-session", "-t", `=${session}`]);
     await w.close();
   });
   // A fake agent: shows an approval prompt for 3s, clears the screen, then echoes input.
   const fake = `printf 'Do you want to proceed?\\n  1. Yes\\n'; sleep 3; printf '\\033[2J\\033[H'; exec cat`;
-  execFileSync("tmux", ["new-session", "-d", "-s", session, "-n", "agent", "-x", "200", "-y", "50", "sh", "-c", fake]);
-  execFileSync("tmux", ["new-window", "-d", "-t", `=${session}`, "-n", "injector", `env PALAVER_HOME='${w.home}' '${process.execPath}' '${BIN}' inject ${name}`]);
+  const pane = execFileSync("tmux", ["new-session", "-d", "-P", "-F", "#{pane_id}", "-s", session, "-n", "agent", "-x", "200", "-y", "50", "sh", "-c", fake], { encoding: "utf8" }).trim();
+  // The user splits the window: a shell pane becomes the active one. Nothing may be typed into it.
+  execFileSync("tmux", ["split-window", "-t", pane, "sh"]);
+  execFileSync("tmux", ["new-window", "-d", "-t", `=${session}`, "-n", "injector", `env PALAVER_HOME='${w.home}' '${process.execPath}' '${BIN}' inject ${name} '${pane}'`]);
   const a = await w.mcp("alice");
   await w.mcp(name);
-  await a.call("send_message", { to: name, message: "line one\nline two" });
+  await a.call("send_message", { to: name, message: `line one\ntouch ${marker}` });
+  await a.call("send_message", { to: name, message: "second message" });
 
-  const screen = () => execFileSync("tmux", ["capture-pane", "-p", "-J", "-t", `=${session}:agent`], { encoding: "utf8" });
+  const screen = () => execFileSync("tmux", ["capture-pane", "-p", "-J", "-t", pane], { encoding: "utf8" });
   await sleep(1500);
   assert.doesNotMatch(screen(), /line one/, "pasted while an approval prompt was on screen");
+  const queued = fs.readdirSync(path.join(w.home, "inbox", name)).filter((f) => f.endsWith(".json"));
+  assert.equal(queued.length, 2, "held messages must stay in the inbox until pasted");
   let s = "";
-  for (let i = 0; i < 40 && !/line two/.test(s); i++) {
+  for (let i = 0; i < 60 && !/second message/.test(s); i++) {
     await sleep(250);
     s = screen();
   }
   assert.match(s, /from "alice"/);
-  assert.match(s, /line one\s*\n\s*line two/);
+  assert.match(s, /line one\s*\n\s*touch /);
+  assert.match(s, /second message/, "the first message's disclaimer must not stall the next one");
+  await sleep(500);
+  assert.ok(!fs.existsSync(marker), "message text reached the shell pane");
+});
+
+test("palaver tmux forwards settings into an already running tmux server", { skip: !hasTmux && "tmux not installed" }, async (t) => {
+  const w = await world();
+  const name = `tl${process.pid}`;
+  const session = `palaver-${name}`;
+  t.after(async () => {
+    spawnSync("tmux", ["kill-session", "-t", `=${session}`]);
+    await w.close();
+  });
+  const r = await w.cli(["tmux", name, "--roles", "backend", "--", "cat"], { PALAVER_RELAY: "ws://example.invalid:7777" });
+  assert.match(r.stderr, /attach with: tmux attach/); // no terminal in tests; the session still runs
+  const env = execFileSync("tmux", ["show-environment", "-t", `=${session}`], { encoding: "utf8" });
+  assert.match(env, /^PALAVER_RELAY=ws:\/\/example\.invalid:7777$/m);
+  assert.match(env, new RegExp(`^PALAVER_HOME=${w.home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"));
+  assert.match(env, /^PALAVER_ROLES=backend$/m);
+  assert.doesNotMatch(env, /PALAVER_TOKEN=/);
+  const injector = execFileSync("tmux", ["list-panes", "-t", `=${session}:injector`, "-F", "#{pane_start_command}"], { encoding: "utf8" });
+  assert.match(injector, /inject .*%\d+/);
 });
 
 test("member tokens bind names; health endpoint; protocol version", async (t) => {
@@ -264,4 +292,102 @@ test("settings: PALAVER_ENV file is read, real env wins, roles validated", async
 
   const a = await w.mcp("alice", { PALAVER_ROLES: "ok-role,bad role" });
   assert.match(await a.call("list_peers"), /invalid role "bad role"/);
+});
+
+test("relay survives hostile hello fields and rejects overlapping member names", async (t) => {
+  const w = await world();
+  t.after(() => w.close());
+  const url = w.env.PALAVER_RELAY;
+  // These used to kill the relay (oversized close reason, values without toString).
+  assert.equal(await closeCode(url, { type: "hello", v: "x".repeat(200), name: "a", token: TOKEN }), 4005);
+  assert.equal(await closeCode(url, '{"type":"hello","v":{"toString":null},"name":"a","token":"x"}'), 4005);
+  assert.equal(await closeCode(url, { type: "hello", name: { toString: null }, token: TOKEN }), 4001);
+  assert.equal(await closeCode(url, { type: "hello", name: "a", token: TOKEN, roles: "nope" }), 4001);
+  assert.equal(await closeCode(url, { type: "hello", name: "a", token: TOKEN, roles: [{}] }), 4002);
+  const r = await w.cli(["list"]);
+  assert.equal(r.code, 0, r.stderr);
+
+  await assert.rejects(
+    async () => startRelay({ host: "127.0.0.1", port: 0, members: [{ name: "alice", token: "a".repeat(20) }, { name: "alice-bob", token: "b".repeat(20) }] }),
+    /overlaps "alice"/,
+  );
+  await assert.rejects(
+    async () => startRelay({ host: "127.0.0.1", port: 0, members: [{ name: "bob", token: "a".repeat(20) }, { name: "bob", token: "b".repeat(20) }] }),
+    /overlaps "bob"/,
+  );
+});
+
+test("a receiver that never confirms cannot make the relay lose or hoard messages", async (t) => {
+  const w = await world();
+  t.after(() => w.close());
+  const rogue = new WebSocket(w.env.PALAVER_RELAY);
+  await new Promise((r) => rogue.on("open", r));
+  rogue.send(JSON.stringify({ type: "hello", v: 1, name: "bob", token: TOKEN }));
+  let got = 0;
+  rogue.on("message", (d) => JSON.parse(d).type === "message" && got++);
+  await sleep(200);
+  const send = (n, from) =>
+    Promise.all(Array.from({ length: n }, (_, i) => w.cli(["send", "bob", `${from}-${i}`], { PALAVER_NAME: from })));
+  // 30 + 30 + 30 messages from three senders (rate limit is per connection).
+  const results = (await Promise.all([send(30, "s1"), send(30, "s2"), send(30, "s3")])).flat();
+  assert.equal(got, 50, "at most 50 unconfirmed messages are handed to one receiver");
+  const ok = results.filter((r) => r.code === 0).length;
+  rogue.terminate();
+  await sleep(300);
+  const b = await w.mcp("bob");
+  let received = 0;
+  for (let i = 0; i < 20; i++) {
+    const out = await b.call("wait_for_message", { timeout_seconds: 1 });
+    received += (out.match(/--- palaver message /g) || []).length;
+    if (/No messages/.test(out)) break;
+  }
+  assert.equal(received, ok, "every accepted message is delivered after the reconnect");
+});
+
+test("a message is not confirmed until it is stored", async (t) => {
+  const w = await world();
+  t.after(() => w.close());
+  const a = await w.mcp("alice");
+  // Block bob's inbox: a regular file where the directory should be.
+  fs.mkdirSync(path.join(w.home, "inbox"), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(w.home, "inbox", "bob"), "not a directory");
+  const b = await w.mcp("bob");
+  assert.match(await a.call("send_message", { to: "bob", message: "keep me" }), /has not confirmed receipt/);
+  fs.rmSync(path.join(w.home, "inbox", "bob"));
+  await b.client.close(); // reconnecting makes the relay redeliver
+  await sleep(300);
+  const b2 = await w.mcp("bob");
+  assert.match(await b2.call("wait_for_message", { timeout_seconds: 5 }), /keep me/);
+});
+
+test("palaver wait gets messages queued while offline, and announces its roles", async (t) => {
+  const w = await world();
+  t.after(() => w.close());
+  const a = await w.mcp("alice");
+  const first = w.cli(["wait", "1"], { PALAVER_NAME: "carol" });
+  await first; // carol is now known to the relay, and offline
+  for (let i = 0; i < 3; i++) {
+    assert.match(await a.call("send_message", { to: "carol", message: `queued ${i}` }), /queued/);
+    const out = (await w.cli(["wait", "3"], { PALAVER_NAME: "carol" })).stdout;
+    assert.match(out, new RegExp(`queued ${i}`), `run ${i}: ${out}`);
+  }
+
+  const waiting = w.cli(["wait", "10"], { PALAVER_NAME: "dave", PALAVER_ROLES: "worker" });
+  for (let i = 0; i < 50 && !/dave .*\[worker\] online/.test(await a.call("list_peers")); i++) await sleep(100);
+  assert.match(await a.call("send_message", { to: "@worker", message: "job" }), /Sent to 1 online peer/);
+  assert.match((await waiting).stdout, /job/);
+});
+
+test("an unreadable or missing explicit settings file is an error, not silently ignored", async (t) => {
+  const w = await world();
+  t.after(() => w.close());
+  const missing = await w.cli(["list"], { PALAVER_ENV: path.join(w.home, "nope.env") });
+  assert.notEqual(missing.code, 0);
+  assert.match(missing.stderr, /cannot read settings file .*nope\.env: ENOENT/);
+  if (process.getuid && process.getuid() !== 0) {
+    const locked = path.join(w.home, "locked.env");
+    fs.writeFileSync(locked, "PALAVER_NAME=x\n", { mode: 0o000 });
+    const r = await w.cli(["list"], { PALAVER_ENV: locked });
+    assert.match(r.stderr, /cannot read settings file .*EACCES/);
+  }
 });

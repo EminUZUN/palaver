@@ -1,19 +1,34 @@
-# systemd unit for the relay. Install the package (npm i -g palaver-agents), then:
-#   sudo cp palaver-relay.service /etc/systemd/system/ && sudo systemctl enable --now palaver-relay
-# Settings go in /etc/palaver/.env (PALAVER_TOKEN and/or PALAVER_MEMBERS, PALAVER_HOST).
+# systemd unit for the relay.
+#
+#   sudo npm install -g palaver-agents          # or a clone + `npm link`
+#   sudo install -d -m 700 /etc/palaver
+#   sudo $EDITOR /etc/palaver/env                # PALAVER_HOST=..., PALAVER_TOKEN=... (see .env.example)
+#   sudo chmod 600 /etc/palaver/env
+#   sudo cp palaver-relay.service /etc/systemd/system/
+#   sudo systemctl enable --now palaver-relay
+#   curl http://<PALAVER_HOST>:7777/healthz
+#
+# The settings stay root-only (0600): systemd hands them to the service through
+# LoadCredential, so the unprivileged DynamicUser can read its copy and nothing else.
 [Unit]
 Description=palaver relay
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Environment=PALAVER_ENV=/etc/palaver/.env
+LoadCredential=env:/etc/palaver/env
+Environment=PALAVER_ENV=%d/env
+# Per-member tokens (optional): put the file in /etc/palaver (0600) and uncomment both lines.
+#LoadCredential=members.json:/etc/palaver/members.json
+#Environment=PALAVER_MEMBERS=%d/members.json
 ExecStart=/usr/bin/env palaver relay
 Restart=on-failure
+RestartSec=5
 DynamicUser=yes
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
+PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target

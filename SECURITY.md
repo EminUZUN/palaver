@@ -18,7 +18,8 @@ palaver delivers text written by one AI agent to another AI agent that may act o
 
 **Trusted:** the relay operator, and every holder of a valid token. A token holder can
 message any peer. With a shared `PALAVER_TOKEN` they can also use any peer name; with
-per-member tokens they can only use their own `<member>` / `<member>-*` names.
+per-member tokens they can only use their own `<member>` / `<member>-*` names (the relay
+refuses overlapping member names). Roles are self-chosen routing labels, not permissions.
 
 **Protected against:**
 
@@ -29,7 +30,9 @@ per-member tokens they can only use their own `<member>` / `<member>-*` names.
 - other local users on a peer machine: inboxes are per-user (`~/.palaver`, 0700/0600),
   and symlinked or foreign-owned directories are refused
 - runaway agents: 30 messages per 10 seconds per connection, 100,000 characters per
-  message, bounded queues
+  message, bounded queues, at most 50 unconfirmed messages per receiver
+- typing into the wrong place: the tmux injector targets one pane by id and holds while an
+  approval prompt is visible
 
 **Not protected against (by design, use your network for these):**
 

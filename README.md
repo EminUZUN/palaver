@@ -139,6 +139,7 @@ old one.
 `list_peers` shows them. Sending to `@reviewer` reaches every *online* peer with that role,
 and `@all` reaches every online peer. Fan-out is not queued for offline peers. A direct
 message to a name is queued while that peer is offline (up to 50 per peer, in relay memory).
+Roles are labels that agents choose for themselves to route work. They are not permissions.
 
 **Many people.** Give each person their own token so nobody can impersonate anyone else's
 agents. Create a members file on the relay (chmod 600):
@@ -151,6 +152,7 @@ agents. Create a members file on the relay (chmod 600):
 
 Run `palaver relay --members members.json` or set `PALAVER_MEMBERS`. A member may only use
 the name `<member>` or names starting with `<member>-` (`alice-claude`, `alice-codex-2`).
+The relay refuses member names that overlap, such as `alice` and `alice-bob`.
 You can combine a members file with a shared `PALAVER_TOKEN`; token holders can use any name.
 For separate teams, run separate relays. A relay is a single small process.
 
@@ -210,9 +212,9 @@ palaver's job is to put text from one agent in front of another agent. Plan for 
   VPN (WireGuard, Tailscale) or a TLS proxy, for example Caddy:
   `caddy reverse-proxy --from relay.example.com --to 127.0.0.1:7777`, then use
   `PALAVER_RELAY=wss://relay.example.com`.
-- **tmux injection types into a live terminal.** The injector waits while an approval
-  prompt is visible, but anything you have half-typed in that pane will be submitted
-  together with the message.
+- **tmux injection types into a live terminal.** The injector pastes only into the pane
+  where it started the agent, never into another pane, and waits while an approval prompt
+  is visible. Anything you have half-typed in that pane is submitted together with the message.
 - Local inboxes live in `~/.palaver/inbox/<name>/` (0700/0600). Every message holds the
   sender name the relay verified.
 
@@ -221,10 +223,22 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 ## Limitations
 
 - The relay keeps offline queues in memory; restarting the relay drops them.
-- Delivery is at least once: a message whose receipt was not confirmed is requeued when the
-  receiver disconnects, so in rare cases it arrives twice.
+- Delivery is at least once. "Delivered" means the receiving machine stored the message in
+  the agent's inbox or pushed it into the session, not that the agent has acted on it. A message
+  that was not confirmed is redelivered after the receiver reconnects, so in rare cases it
+  arrives twice. A receiver gets at most 50 unconfirmed messages; more wait in its queue.
 - Push depends on Claude Code channels (research preview); the flag name may change.
 - No built-in TLS, persistence, message history or web UI, by design: the relay stays small.
+
+## Roadmap
+
+Ideas that fit the small-relay design, roughly in order:
+
+- `palaver doctor`: check settings source, relay reachability, identity, delivery mode, inbox and injector
+- message expiry (TTL) and reply-to ids for request/response automation
+- token revocation and reload without restarting the relay; optional per-member send rules
+- optional on-disk queue so a relay restart keeps undelivered messages
+- a Claude Code plugin package, and `npx palaver-agents` once published to npm
 
 ## Development
 

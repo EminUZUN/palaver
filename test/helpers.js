@@ -13,10 +13,11 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Isolated world: a relay on a random port and a private state dir. */
 export async function world() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "palaver-test-"));
+  fs.writeFileSync(path.join(home, "empty.env"), ""); // never read the developer's real settings
   const relay = await startRelay({ host: "127.0.0.1", port: 0, token: TOKEN, log: () => {} });
   const env = {
     ...process.env,
-    PALAVER_ENV: path.join(home, "no.env"), // never read the developer's real .env
+    PALAVER_ENV: path.join(home, "empty.env"),
     PALAVER_HOME: home,
     PALAVER_RELAY: `ws://127.0.0.1:${relay.port}`,
     PALAVER_TOKEN: TOKEN,

@@ -2,9 +2,14 @@
 // palaver: let AI coding agents (Claude Code, Codex, ...) message each other
 // across sessions, machines and accounts through a small self-hosted relay.
 import fs from "node:fs";
-import { HOSTNAME, checkName, envFiles, loadEnv } from "../lib/config.js";
+import { HOSTNAME, checkName, envFiles, loadEnv, parseRoles } from "../lib/config.js";
 
-loadEnv();
+try {
+  loadEnv();
+} catch (e) {
+  console.error(`palaver: ${e.message}`);
+  process.exit(1);
+}
 
 const USAGE = `palaver - messaging between AI coding agents over your own LAN/VPN
 
@@ -38,9 +43,12 @@ const opt = (flag, fallback) => {
 };
 const cliName = () => checkName(process.env.PALAVER_NAME || `${HOSTNAME}-cli`, "PALAVER_NAME");
 
-async function connect(mode) {
+/** Connect to the relay. `onMessage` is attached before connecting, so queued messages are not missed. */
+async function connect(mode, onMessage) {
   const { RelayClient } = await import("../lib/client.js");
-  const c = new RelayClient({ url: process.env.PALAVER_RELAY, token: process.env.PALAVER_TOKEN, name: cliName(), mode, reconnect: false });
+  const roles = mode === "peer" ? parseRoles(process.env.PALAVER_ROLES) : [];
+  const c = new RelayClient({ url: process.env.PALAVER_RELAY, token: process.env.PALAVER_TOKEN, name: cliName(), mode, roles, reconnect: false });
+  if (onMessage) c.on("message", onMessage);
   c.start();
   await c.ready();
   return c;
@@ -80,7 +88,7 @@ try {
     }
     case "inject": {
       const { inject } = await import("../lib/tmux.js");
-      await inject(args[0]);
+      await inject(args[0], args[1]);
       break;
     }
     case "list": {
@@ -103,18 +111,22 @@ try {
     case "wait": {
       const secs = Number(args[0]) || 300;
       const { format } = await import("../lib/inbox.js");
-      const c = await connect("peer");
-      const timer = setTimeout(() => {
-        console.log(`No messages within ${secs}s.`);
-        c.close();
-      }, secs * 1000);
-      let idle;
-      c.on("message", (m) => {
+      let c = null;
+      let timer = null;
+      let idle = null;
+      const done = () => (c ? c.close() : setTimeout(done, 50));
+      c = await connect("peer", (m, confirm) => {
         clearTimeout(timer);
-        console.log(format(m));
+        process.stdout.write(`${format(m)}\n`, confirm); // confirm only once printed
         clearTimeout(idle);
-        idle = setTimeout(() => c.close(), 500); // also collect messages arriving together
+        idle = setTimeout(done, 500); // also collect messages arriving together
       });
+      if (!idle) {
+        timer = setTimeout(() => {
+          console.log(`No messages within ${secs}s.`);
+          c.close();
+        }, secs * 1000);
+      }
       c.on("fatal", (r) => fail(`relay closed the connection: ${r}`));
       break;
     }
