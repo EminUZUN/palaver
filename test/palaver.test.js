@@ -509,3 +509,54 @@ test("@role reaches busy online peers too (queued), and reports skips", async (t
   }
   assert.match(all, /the job/, "the busy peer must still get the role message");
 });
+
+test("guarded tmux commands never run in a pane whose process was replaced", { skip: !hasTmux && "tmux not installed" }, async (t) => {
+  const { guarded } = await import("../lib/tmux.js");
+  const session = `palaver-tg${process.pid}`;
+  t.after(() => spawnSync("tmux", ["kill-session", "-t", `=${session}`]));
+  const [pane, pid] = execFileSync("tmux", ["new-session", "-d", "-P", "-F", "#{pane_id} #{pane_pid}", "-s", session, "cat"], { encoding: "utf8" }).trim().split(" ");
+  const screen = () => execFileSync("tmux", ["capture-pane", "-p", "-t", pane], { encoding: "utf8" });
+  assert.equal(guarded(pane, "1", `send-keys -t ${pane} -l wrong-pid`), false);
+  assert.equal(guarded(pane, pid, `send-keys -t ${pane} -l right-pid`), true);
+  await sleep(200);
+  assert.match(screen(), /right-pid/);
+  assert.doesNotMatch(screen(), /wrong-pid/);
+  execFileSync("tmux", ["respawn-pane", "-k", "-t", pane, "cat"]); // same id, new process
+  assert.equal(guarded(pane, pid, `send-keys -t ${pane} -l after-respawn`), false);
+  await sleep(200);
+  assert.doesNotMatch(screen(), /after-respawn/);
+});
+
+test("session settings round-trip tokens with quotes, backslashes and newlines", { skip: !hasTmux && "tmux not installed" }, async (t) => {
+  const odd = 'odd"token\\with-quote-and-backslash-0123';
+  const relay = await startRelay({ host: "127.0.0.1", port: 0, token: odd, log: () => {} });
+  const w = await world();
+  const name = `tq${process.pid}`;
+  const session = `palaver-${name}`;
+  const out = path.join(w.home, "agent-out.txt");
+  t.after(async () => {
+    spawnSync("tmux", ["kill-session", "-t", `=${session}`]);
+    await relay.close();
+    await w.close();
+  });
+  const agent = `'${process.execPath}' '${BIN}' list > '${out}' 2>&1; sleep 30`;
+  await w.cli(["tmux", name, "--", "sh", "-c", agent], { PALAVER_RELAY: `ws://127.0.0.1:${relay.port}`, PALAVER_TOKEN: odd });
+  let text = "";
+  for (let i = 0; i < 50 && !text; i++, await sleep(100)) text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : "";
+  assert.match(text, /no other peers/, `agent could not use the token: ${text}`);
+
+  // The parser itself: double quotes decode escapes, single quotes are literal.
+  const file = path.join(w.home, "quotes.env");
+  fs.writeFileSync(file, `PALAVER_T1="a\\"b\\\\c\\nd"\nPALAVER_T2='a\\"b'\nPALAVER_T3=plain # comment\n`);
+  const { loadEnv } = await import("../lib/config.js");
+  const saved = process.env.PALAVER_ENV;
+  process.env.PALAVER_ENV = file;
+  try {
+    loadEnv();
+  } finally {
+    process.env.PALAVER_ENV = saved;
+  }
+  assert.equal(process.env.PALAVER_T1, 'a"b\\c\nd');
+  assert.equal(process.env.PALAVER_T2, 'a\\"b');
+  assert.equal(process.env.PALAVER_T3, "plain");
+});

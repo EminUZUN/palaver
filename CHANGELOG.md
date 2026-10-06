@@ -27,3 +27,7 @@ First public version.
   and ignores stale values in a running tmux server; `palaver wait` never confirms a
   message it could not print; `@role` queues for busy online peers and reports skips;
   tests run on a private tmux server.
+- Third review round: the injector's process check and paste run as one atomic tmux
+  command (`if-shell -F`), so a pane respawned mid-delivery is never typed into;
+  double-quoted `.env` values decode JSON-style escapes, so session settings round-trip
+  tokens containing quotes, backslashes or newlines.

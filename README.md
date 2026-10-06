@@ -194,7 +194,9 @@ palaver listen <name> [seconds]       # waits on <name>'s local inbox (no relay 
 ```
 
 Settings come from environment variables, otherwise from the first existing file of
-`$PALAVER_ENV`, `~/.config/palaver/.env`, `<package>/.env`. See [.env.example](.env.example).
+`$PALAVER_ENV`, `~/.config/palaver/.env`, `<package>/.env`. See [.env.example](.env.example). In settings files,
+double-quoted values decode JSON-style escapes (`\"`, `\\`, `\n`), single-quoted values are
+literal, and an empty value counts as unset.
 
 | Variable | Used by | Meaning |
 |---|---|---|
