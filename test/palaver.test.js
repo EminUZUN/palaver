@@ -218,39 +218,54 @@ test("tmux injector: exact pane, consecutive messages, newlines, holds on approv
   assert.ok(!fs.existsSync(marker), "message text reached the shell pane");
 });
 
-test("tmux injector holds Enter when an approval prompt appears after the paste", { skip: !hasTmux && "tmux not installed" }, async (t) => {
+/**
+ * A fake agent that draws what it receives in an input box and logs every lone Enter with
+ * its phase. With `dialog`, an approval prompt comes up right as our paste arrives and
+ * closes 3 seconds later.
+ */
+async function fakeAgentRun(t, { dialog, message }) {
   const w = await world();
-  const session = `palaver-ta${process.pid}`;
-  const name = `ta${process.pid}`;
+  const name = `ta${process.pid}${dialog ? "d" : "q"}`;
+  const session = `palaver-${name}`;
   const log = path.join(w.home, "keys.log");
   t.after(async () => {
     spawnSync("tmux", ["kill-session", "-t", `=${session}`]);
     await w.close();
   });
-  // A fake agent that reaches an approval prompt right as our paste arrives, and logs
-  // whether a lone Enter came while the prompt was up or after it closed.
   const fake = path.join(w.home, "fake-agent.cjs");
   fs.writeFileSync(fake, `
     const fs = require("fs");
     let phase = "idle";
     process.stdin.setRawMode(true);
     process.stdin.on("data", (d) => {
-      if (phase === "idle") {
+      const s = d.toString();
+      if (s === "\\r") return fs.appendFileSync(${JSON.stringify(log)}, "enter while " + phase + "\\n");
+      process.stdout.write(s.split("\\r").map((l) => "│ > " + l).join("\\r\\n") + "\\r\\n");
+      if (phase === "idle" && ${Boolean(dialog)}) {
         phase = "approval";
         process.stdout.write("Do you want to proceed?\\r\\n  1. Yes\\r\\n");
         setTimeout(() => { phase = "closed"; process.stdout.write("\\x1b[2J\\x1b[H"); }, 3000);
-      }
-      if (d.toString() === "\\r") fs.appendFileSync(${JSON.stringify(log)}, "enter while " + phase + "\\n");
+      } else if (phase === "idle") phase = "typing";
     });
   `);
   const [pane, pid] = execFileSync("tmux", ["new-session", "-d", "-P", "-F", "#{pane_id} #{pane_pid}", "-s", session, "-n", "agent", "-x", "200", "-y", "50", process.execPath, fake], { encoding: "utf8" }).trim().split(" ");
   execFileSync("tmux", ["new-window", "-d", "-t", `=${session}`, "-n", "injector", `env PALAVER_HOME='${w.home}' '${process.execPath}' '${BIN}' inject ${name} '${pane}' ${pid}`]);
   const a = await w.mcp("alice");
   await w.mcp(name);
-  await a.call("send_message", { to: name, message: "please run the tests" });
+  await a.call("send_message", { to: name, message });
   let keys = "";
   for (let i = 0; i < 40 && !keys; i++, await sleep(250)) keys = fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
+  return keys;
+}
+
+test("tmux injector holds Enter when an approval prompt appears after the paste", { skip: !hasTmux && "tmux not installed" }, async (t) => {
+  const keys = await fakeAgentRun(t, { dialog: true, message: "please run the tests" });
   assert.equal(keys, "enter while closed\n", "Enter must wait until the approval prompt is gone");
+});
+
+test("tmux injector submits a message that quotes an approval question", { skip: !hasTmux && "tmux not installed" }, async (t) => {
+  const keys = await fakeAgentRun(t, { dialog: false, message: 'Please review the string "Do you want to proceed?" and [y/N] in our dialog code.' });
+  assert.equal(keys, "enter while typing\n", "our own pasted text was taken for an approval prompt");
 });
 
 test("palaver tmux hands the caller's settings to the agent, over stale tmux server values", { skip: !hasTmux && "tmux not installed" }, async (t) => {

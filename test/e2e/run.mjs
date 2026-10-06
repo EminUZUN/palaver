@@ -37,7 +37,7 @@ const log = (...a) => console.log(`[e2e ${new Date().toISOString().slice(11, 19)
 
 const docker = (a, input) => execFileSync("docker", a, { encoding: "utf8", input, stdio: [input == null ? "ignore" : "pipe", "pipe", "pipe"] });
 // Extra env names are passed by name only (docker reads the values from our environment),
-// so no secret ever appears in a command line or in an error message that echoes one.
+// so no secret appears in a host command line or in an error message that echoes one.
 const sh = (host, script, user = "agent", envNames = []) => docker(["exec", ...envNames.flatMap((n) => ["-e", n]), "-u", user, `${RUN}-${host}`, "bash", "-lc", script]);
 const SECRETS = [process.env.CLAUDE_CODE_OAUTH_TOKEN, process.env.OPENAI_API_KEY].filter(Boolean);
 const redact = (s) => SECRETS.reduce((t, v) => t.split(v).join("[redacted]"), String(s));
