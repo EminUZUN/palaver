@@ -59,21 +59,22 @@ and Linux; on Windows only the relay and polling tools work.
 ### 1. Install (every machine)
 
 ```sh
-git clone https://github.com/EminUZUN/palaver && cd palaver && npm install
-npm link    # optional: puts `palaver` on your PATH
+npm install -g palaver-agents    # puts `palaver` on your PATH
 ```
+
+From source instead: `git clone https://github.com/EminUZUN/palaver && cd palaver && npm install && npm link`.
 
 Claude Code users can install palaver as a plugin instead. It asks for the relay URL and
 token (stored in Claude Code's secure storage) and needs no separate MCP registration:
 
 ```
-/plugin install palaver --marketplace EminUZUN/palaver
+/plugin marketplace add EminUZUN/palaver
+/plugin install palaver@palaver
 claude --dangerously-load-development-channels plugin:palaver@palaver   # with push
 ```
 
-Once released, palaver is also on npm (`npm install -g palaver-agents`), the relay image on
-`ghcr.io/eminuzun/palaver`, and the server in the [MCP Registry](https://registry.modelcontextprotocol.io)
-as `io.github.EminUZUN/palaver`.
+The relay image is `ghcr.io/eminuzun/palaver`, and the server is listed in the
+[MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.EminUZUN/palaver`.
 
 ### 2. Start a relay (one machine)
 
@@ -88,7 +89,7 @@ palaver relay
 ```
 
 Set `PALAVER_HOST` to this machine's LAN/VPN address. Or use Docker:
-`docker build -t palaver . && docker run -d -p 7777:7777 -e PALAVER_TOKEN=... palaver`
+`docker run -d -p 7777:7777 -e PALAVER_TOKEN=... ghcr.io/eminuzun/palaver`
 (see [examples/](examples/)). Health check: `GET /healthz`.
 
 ### 3. Configure each machine
@@ -107,8 +108,11 @@ Check: `palaver list` should connect and print the peers (none yet).
 **Claude Code**: register the MCP server once (user scope, all projects):
 
 ```sh
-claude mcp add --scope user palaver -- node /path/to/palaver/bin/palaver.js mcp
+claude mcp add --scope user palaver -- palaver mcp
 ```
+
+If an agent cannot find `palaver` (for example with nvm), use the full path that
+`command -v palaver` prints, here and in the configs below.
 
 Then start Claude with push enabled:
 
@@ -122,8 +126,8 @@ Inside a clone of this repo, `.mcp.json` registers the server for you.
 
 ```toml
 [mcp_servers.palaver]
-command = "node"
-args = ["/path/to/palaver/bin/palaver.js", "mcp"]
+command = "palaver"
+args = ["mcp"]
 tool_timeout_sec = 1800                  # wait_for_message can block up to 1500s
 default_tools_approval_mode = "approve"  # optional: no approval prompt per palaver tool call
 ```
@@ -141,7 +145,7 @@ environment. Detach with `Ctrl-b d`, reattach with `tmux attach -t palaver-lapto
 **Antigravity (`agy`)**: register the MCP server once:
 
 ```sh
-agy mcp add palaver node /path/to/palaver/bin/palaver.js mcp
+agy mcp add palaver palaver mcp
 PALAVER_NAME=laptop-agy agy                      # listener mode, after your first prompt
 palaver tmux laptop-agy --roles gemini -- agy    # or: woken through tmux
 ```
@@ -286,7 +290,6 @@ Ideas that fit the small-relay design, roughly in order:
 - message expiry (TTL) and reply-to ids for request/response automation
 - token revocation and reload without restarting the relay; optional per-member send rules
 - optional on-disk queue so a relay restart keeps undelivered messages
-- a Claude Code plugin package, and `npx palaver-agents` once published to npm
 
 ## Development
 

@@ -53,6 +53,10 @@ jobs:
 
       - name: Publish to the MCP Registry
         run: |
+          # npm holds new versions as staged until a maintainer approves them on npmjs.com,
+          # and the registry only accepts a version that is live on npm.
+          v="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 60); do npm view "palaver-agents@$v" version >/dev/null 2>&1 && break; echo "waiting for npm approval of $v"; sleep 30; done
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish

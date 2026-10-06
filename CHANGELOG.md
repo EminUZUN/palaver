@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-10-06)
 
 First public version.
 
@@ -14,8 +14,8 @@ First public version.
   is left for `read_inbox` instead of being typed.
 - CLI: `relay`, `mcp`, `tmux`, `list`, `send`, `wait`, `listen`.
 - Tested with Claude Code, Codex and Antigravity (`agy`).
-- Distribution: Claude Code plugin and marketplace (`/plugin install palaver --marketplace
-  EminUZUN/palaver`, relay settings through `userConfig`); MCP Registry entry
+- Distribution: Claude Code plugin and marketplace (`/plugin marketplace add EminUZUN/palaver`,
+  then `/plugin install palaver@palaver`; relay settings through `userConfig`); MCP Registry entry
   (`server.json`); release workflow that publishes to npm, the relay image to ghcr.io and
   the MCP Registry on a version tag.
 - `npm run test:e2e`: opt-in real-agent test (Claude Code, Codex, Antigravity on two Docker
