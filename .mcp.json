@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "palaver": {
+      "command": "node",
+      "args": ["bin/palaver.js", "mcp"]
+    }
+  }
+}

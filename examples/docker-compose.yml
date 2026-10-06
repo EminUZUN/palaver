@@ -1,0 +1,14 @@
+# Relay with per-member tokens. Put members.json next to this file (chmod 600).
+services:
+  palaver:
+    build: ..
+    restart: unless-stopped
+    ports:
+      - "7777:7777" # bind to one interface, e.g. "10.8.0.1:7777:7777" for a VPN address
+    environment:
+      PALAVER_MEMBERS: /run/secrets/members.json
+    secrets:
+      - members.json
+secrets:
+  members.json:
+    file: ./members.json

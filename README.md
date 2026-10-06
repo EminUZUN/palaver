@@ -1,0 +1,233 @@
+# palaver
+
+**Let AI coding agents talk to each other: across sessions, machines, accounts and tools.**
+
+palaver connects Claude Code, Codex and other MCP-capable agents through one small
+relay that you run yourself on your LAN or VPN. Agents get tools to list peers and
+send messages, and incoming messages **wake idle agents up**, so a Claude session on
+your laptop can hand a review to a Codex session on a colleague's workstation and
+get the answer back without anyone typing.
+
+```
+ laptop:   Claude Code ──┐                        ┌── Codex        :workstation
+ laptop:   Codex       ──┼── palaver relay (LAN) ─┼── Claude Code  :workstation
+ CI box:   Claude Code ──┘    one tiny process    └── ...
+```
+
+- **Self-hosted, no accounts.** One Node process. Agents can use different Claude or
+  OpenAI accounts. Nothing leaves your network.
+- **Wakes agents up.** Claude Code gets messages pushed in as they arrive; Codex (or any
+  terminal agent) gets them pasted in through tmux; anything else can poll.
+- **Teams and swarms.** Agents announce roles (`reviewer`, `backend`, ...). Send to one
+  agent by name, to every agent with a role (`@reviewer`), or to everyone (`@all`).
+- **Small and auditable.** About 1,000 lines of JavaScript, two dependencies (`ws` and the MCP SDK).
+
+> palaver moves plain text between agents that may act on it. Read [Security](#security)
+> before connecting agents that run with relaxed permissions.
+
+## How it works
+
+| Part | What it does |
+|---|---|
+| `palaver relay` | WebSocket hub on one machine: authenticates peers, routes messages, queues messages for offline peers (in memory). |
+| `palaver mcp` | MCP server each agent session runs: tools `list_peers`, `send_message`, `wait_for_message`, `read_inbox`. |
+| `palaver tmux` | Runs a terminal agent in tmux and pastes incoming messages into it, so it wakes up. |
+| `palaver send / list / wait / listen` | CLI for scripts, CI jobs and agents without MCP. |
+
+How an incoming message reaches the agent:
+
+| Agent | Start it with | Incoming message |
+|---|---|---|
+| Claude Code (push) | `claude --dangerously-load-development-channels server:palaver` | pushed into the session as a `<channel source="palaver">` event |
+| Claude Code (plain) | `claude` | the MCP server asks Claude to keep a background `palaver listen` running; Claude wakes when it returns |
+| Codex, or any terminal agent | `palaver tmux <name> -- codex` | pasted into the agent's prompt |
+| Anything else | — | `wait_for_message` / `read_inbox` tools, or `palaver wait` |
+
+Push uses Claude Code's [channels](https://code.claude.com/docs/en/channels) (research
+preview). Custom channels need the `--dangerously-load-development-channels` flag. palaver
+detects the flag and adapts. Set `PALAVER_PUSH=channel|listener` to override the detection.
+
+## Quick start
+
+Requirements: Node.js 18.17+, plus tmux 3.2+ to wake Codex/terminal agents. Supported on macOS
+and Linux; on Windows only the relay and polling tools work.
+
+### 1. Install (every machine)
+
+```sh
+git clone <this repo> palaver && cd palaver && npm install
+npm link    # optional: puts `palaver` on your PATH
+```
+
+### 2. Start a relay (one machine)
+
+```sh
+mkdir -p ~/.config/palaver
+cat > ~/.config/palaver/.env <<EOF
+PALAVER_TOKEN=$(openssl rand -hex 32)
+PALAVER_HOST=192.0.2.10
+EOF
+chmod 600 ~/.config/palaver/.env
+palaver relay
+```
+
+Set `PALAVER_HOST` to this machine's LAN/VPN address. Or use Docker:
+`docker build -t palaver . && docker run -d -p 7777:7777 -e PALAVER_TOKEN=... palaver`
+(see [examples/](examples/)). Health check: `GET /healthz`.
+
+### 3. Configure each machine
+
+`~/.config/palaver/.env` (chmod 600):
+
+```sh
+PALAVER_RELAY=ws://192.0.2.10:7777
+PALAVER_TOKEN=<the same token>
+```
+
+Check: `palaver list` should connect and print the peers (none yet).
+
+### 4. Connect your agents
+
+**Claude Code**: register the MCP server once (user scope, all projects):
+
+```sh
+claude mcp add --scope user palaver -- node /path/to/palaver/bin/palaver.js mcp
+```
+
+Then start Claude with push enabled:
+
+```sh
+PALAVER_NAME=laptop-claude claude --dangerously-load-development-channels server:palaver
+```
+
+Inside a clone of this repo, `.mcp.json` registers the server for you.
+
+**Codex**: add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.palaver]
+command = "node"
+args = ["/path/to/palaver/bin/palaver.js", "mcp"]
+tool_timeout_sec = 1800                  # wait_for_message can block up to 1500s
+default_tools_approval_mode = "approve"  # optional: no approval prompt per palaver tool call
+```
+
+Then start Codex through tmux so messages wake it:
+
+```sh
+palaver tmux laptop-codex -- codex
+```
+
+The launcher passes the peer name to Codex as a `-c` override, because interactive
+Codex starts MCP servers from a shared daemon that does not inherit your shell's
+environment. Detach with `Ctrl-b d`, reattach with `tmux attach -t palaver-laptop-codex`.
+
+### 5. Try it
+
+Ask either agent: *"list palaver peers and say hi to laptop-codex"*.
+
+## Teams and swarms
+
+**Names.** Each agent has a peer name (`PALAVER_NAME`; default `<hostname>-<pid>`):
+letters, digits, `_` and `-`. A new connection with a name already in use replaces the
+old one.
+
+**Roles.** `PALAVER_ROLES=reviewer,backend` (or `palaver tmux <name> --roles reviewer -- codex`).
+`list_peers` shows them. Sending to `@reviewer` reaches every *online* peer with that role,
+and `@all` reaches every online peer. Fan-out is not queued for offline peers. A direct
+message to a name is queued while that peer is offline (up to 50 per peer, in relay memory).
+
+**Many people.** Give each person their own token so nobody can impersonate anyone else's
+agents. Create a members file on the relay (chmod 600):
+
+```json
+{ "members": [
+    { "name": "alice", "token": "<openssl rand -hex 32>" },
+    { "name": "bob",   "token": "sha256:<hex sha256 of bob's token>" } ] }
+```
+
+Run `palaver relay --members members.json` or set `PALAVER_MEMBERS`. A member may only use
+the name `<member>` or names starting with `<member>-` (`alice-claude`, `alice-codex-2`).
+You can combine a members file with a shared `PALAVER_TOKEN`; token holders can use any name.
+For separate teams, run separate relays. A relay is a single small process.
+
+**Example swarm on one machine:**
+
+```sh
+palaver tmux alice-planner  --roles planner  -- claude
+palaver tmux alice-codex-1  --roles backend  -- codex
+palaver tmux alice-codex-2  --roles backend  -- codex
+palaver tmux alice-reviewer --roles reviewer -- claude
+```
+
+Then tell the planner: *"split the task, send backend work to @backend, and send the result to @reviewer"*.
+
+**Guard rails.** Each connection may send at most 30 messages per 10 seconds, so two agents
+that keep replying to each other hit the limit instead of flooding everyone. Messages are
+plain text up to 100,000 characters.
+
+## CLI
+
+```
+palaver relay --host <ip> [--port 7777] [--members file.json]
+palaver mcp
+palaver tmux <name> [--roles a,b] -- <agent command...>
+palaver list
+palaver send <to> <message...>        # to: name, @role or @all; sends as $PALAVER_NAME without going online
+palaver wait [seconds]                # goes online as $PALAVER_NAME and prints the next message
+palaver listen <name> [seconds]       # waits on <name>'s local inbox (no relay connection)
+```
+
+Settings come from environment variables, otherwise from the first existing file of
+`$PALAVER_ENV`, `~/.config/palaver/.env`, `<package>/.env`. See [.env.example](.env.example).
+
+| Variable | Used by | Meaning |
+|---|---|---|
+| `PALAVER_RELAY` | peers | relay URL, `ws://host:7777` or `wss://` behind TLS |
+| `PALAVER_TOKEN` | both | shared secret, or a member's own token |
+| `PALAVER_NAME` | peers | this agent's peer name |
+| `PALAVER_ROLES` | peers | comma-separated roles |
+| `PALAVER_PUSH` | peers | `channel` or `listener`, overrides detection |
+| `PALAVER_HOME` | peers | local state directory (default `~/.palaver`) |
+| `PALAVER_HOST`, `PALAVER_PORT` | relay | listen address (required) and port (default 7777) |
+| `PALAVER_MEMBERS` | relay | members file with per-member tokens |
+
+## Security
+
+palaver's job is to put text from one agent in front of another agent. Plan for that:
+
+- **Anyone who holds a valid token can message your agents**, and agents running with
+  relaxed permissions (`--dangerously-skip-permissions`, auto-approve) may act on it.
+  Keep tokens secret, use per-member tokens for groups, and run the relay on a
+  private network or VPN only.
+- **Messages are labeled, not trusted.** Agents are told that palaver messages come from
+  other agents, not from their user. Message text cannot close the channel tag or forge a
+  message boundary. That is guidance for the model, not a sandbox.
+- **Use TLS outside a trusted network.** The relay speaks plain `ws://`. Put it behind a
+  VPN (WireGuard, Tailscale) or a TLS proxy, for example Caddy:
+  `caddy reverse-proxy --from relay.example.com --to 127.0.0.1:7777`, then use
+  `PALAVER_RELAY=wss://relay.example.com`.
+- **tmux injection types into a live terminal.** The injector waits while an approval
+  prompt is visible, but anything you have half-typed in that pane will be submitted
+  together with the message.
+- Local inboxes live in `~/.palaver/inbox/<name>/` (0700/0600). Every message holds the
+  sender name the relay verified.
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+## Limitations
+
+- The relay keeps offline queues in memory; restarting the relay drops them.
+- Delivery is at least once: a message whose receipt was not confirmed is requeued when the
+  receiver disconnects, so in rare cases it arrives twice.
+- Push depends on Claude Code channels (research preview); the flag name may change.
+- No built-in TLS, persistence, message history or web UI, by design: the relay stays small.
+
+## Development
+
+```sh
+npm install
+npm test        # starts its own relay on a random port; tmux tests run when tmux is installed
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under the [Apache License 2.0](LICENSE).

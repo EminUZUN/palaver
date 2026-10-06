@@ -1,0 +1,19 @@
+# systemd unit for the relay. Install the package (npm i -g palaver-agents), then:
+#   sudo cp palaver-relay.service /etc/systemd/system/ && sudo systemctl enable --now palaver-relay
+# Settings go in /etc/palaver/.env (PALAVER_TOKEN and/or PALAVER_MEMBERS, PALAVER_HOST).
+[Unit]
+Description=palaver relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=PALAVER_ENV=/etc/palaver/.env
+ExecStart=/usr/bin/env palaver relay
+Restart=on-failure
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

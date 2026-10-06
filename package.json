@@ -1,0 +1,40 @@
+{
+  "name": "palaver-agents",
+  "version": "0.1.0",
+  "description": "Let AI coding agents (Claude Code, Codex, ...) message each other across sessions, machines and accounts through a small self-hosted relay.",
+  "type": "module",
+  "bin": {
+    "palaver": "bin/palaver.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    ".env.example",
+    "README.md",
+    "SECURITY.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "mcp",
+    "ai-agents",
+    "agent-to-agent",
+    "messaging",
+    "relay",
+    "websocket"
+  ],
+  "license": "Apache-2.0",
+  "author": "Emin Uzun",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "ws": "^8.22.0"
+  }
+}
